@@ -1,0 +1,8 @@
+.next/
+.next
+node_modules
+node_modules/
+.env
+*.conf  
+wg0.conf
+__.git

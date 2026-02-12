@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  wg-manager:
+    build: .
+    container_name: wg-manager
+    restart: unless-stopped
+    # 'host' network mode is required to see the host's WireGuard interfaces (wg0, etc.)
+    network_mode: host
+    # NET_ADMIN is required to run 'wg' commands against the kernel
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - NODE_ENV=production
+      # Bind to localhost to prevent external access (as requested)
+      # Access via SSH tunnel or reverse proxy on the server if needed.
+      - HOSTNAME=127.0.0.1
+      - PORT=3000
+    volumes:
+      # Optional: Persist local storage if needed, though app is mostly stateless/browser-based
+      # except for the read-only view of wg interfaces.
+      # If you want to allow the app to READ config files (optional future feature):
+      # - /etc/wireguard:/etc/wireguard:ro
+      - ./public:/app/public
