@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Download, LayoutDashboard, RefreshCw, Zap, Server, Network, Shield, Upload } from "lucide-react";
 import { EndpointVersion } from "@/lib/types";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 interface SidebarProps {
     nodesCount: number;
@@ -45,6 +47,7 @@ export function Sidebar({
     className,
 }: SidebarProps) {
     const { nodes, clients, setNodes, setClients } = useMeshStore();
+    const pathname = usePathname();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -83,6 +86,24 @@ export function Sidebar({
                     <h1 className="font-bold text-lg tracking-tight">Mesh Config</h1>
                 </div>
                 <p className="text-xs text-muted-foreground ml-10">WireGuard Topology Gen</p>
+            </div>
+
+            {/* Navigation */}
+            <div className="px-4 pt-4 space-y-1">
+                <Link href="/" className={cn(
+                    "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                    pathname === "/" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                )}>
+                    <LayoutDashboard className="h-4 w-4" />
+                    Generator
+                </Link>
+                <Link href="/provisioning" className={cn(
+                    "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                    pathname === "/provisioning" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                )}>
+                    <Server className="h-4 w-4" />
+                    Provisioning
+                </Link>
             </div>
 
             {/* Stats Grid */}
@@ -205,6 +226,10 @@ export function Sidebar({
                     <RefreshCw className="mr-2 h-3 w-3" />
                     Reset
                 </Button>
+
+                <div className="pt-2 text-center text-[10px] text-muted-foreground/80 border-t border-border/30">
+                    Developed with AI by Ali Bagdatli
+                </div>
             </div>
         </aside>
     );

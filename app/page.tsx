@@ -12,7 +12,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DashboardLayout } from "@/components/features/DashboardLayout";
 import { toast } from "sonner";
 import { GeneratePayload } from "@/lib/types";
-import { useWireGuardStatus } from "@/hooks/useWireGuardStatus";
 
 function toBase64(arr: Uint8Array) {
   return btoa(String.fromCharCode(...arr));
@@ -45,9 +44,6 @@ export default function HomePage() {
 
   const [busy, setBusy] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "topology">("list");
-
-  // Poll WireGuard Status
-  const { status: wgStatus } = useWireGuardStatus(interfaceName);
 
   // Actions
   const addNode = () => {
@@ -220,7 +216,7 @@ export default function HomePage() {
       <Tabs defaultValue="list" className="w-full h-full flex flex-col" onValueChange={(v) => setViewMode(v as "list" | "topology")}>
         <div className="flex items-center justify-between mb-4 shrink-0">
           <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
-          <TabsList className="grid w-[200px] grid-cols-2">
+          <TabsList className="grid w-[240px] grid-cols-2">
             <TabsTrigger value="list">List</TabsTrigger>
             <TabsTrigger value="topology">Topology</TabsTrigger>
           </TabsList>
@@ -256,7 +252,6 @@ export default function HomePage() {
           <div className="shrink-0">
             <NodeTable
               nodes={nodes}
-              status={wgStatus}
               addNode={addNode}
               removeNode={removeNode}
               updateNode={updateNode}
@@ -270,7 +265,6 @@ export default function HomePage() {
           <div className="shrink-0">
             <ClientTable
               clients={clients}
-              status={wgStatus}
               addClient={addClient}
               removeClient={removeClient}
               updateClient={updateClient}

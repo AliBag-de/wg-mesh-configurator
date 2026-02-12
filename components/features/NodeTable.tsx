@@ -8,17 +8,9 @@ import { Key, Plus, Trash2, Server } from "lucide-react";
 import { EndpointVersion } from "@/lib/types";
 import { AnimatePresence, motion } from "framer-motion";
 import { colorForKey } from "@/lib/color";
-import { formatBytes } from "@/lib/utils";
-
-interface PeerStatus {
-    latestHandshake: number;
-    transferRx: number;
-    transferTx: number;
-}
 
 interface NodeTableProps {
     nodes: NodeInput[];
-    status?: Record<string, PeerStatus>;
     addNode: () => void;
     removeNode: (id: string) => void;
     updateNode: (id: string, patch: Partial<NodeInput>) => void;
@@ -29,7 +21,6 @@ interface NodeTableProps {
 
 export function NodeTable({
     nodes,
-    status = {},
     addNode,
     removeNode,
     updateNode,
@@ -37,13 +28,6 @@ export function NodeTable({
     autoGenerateKeys,
     endpointVersion,
 }: NodeTableProps) {
-    // Helper to check if online (handshake < 3 mins ago)
-    const isOnline = (handshake: number) => {
-        if (!handshake) return false;
-        const now = Date.now() / 1000;
-        return (now - handshake) < 180;
-    };
-
     return (
         <div className="rounded-lg border bg-card/50 backdrop-blur-sm overflow-hidden">
             {/* ... Header ... */}
@@ -70,11 +54,9 @@ export function NodeTable({
                         <thead className="bg-muted/10 text-muted-foreground font-medium border-b">
                             <tr>
                                 <th className="px-3 py-2 w-10 text-center">#</th>
-                                <th className="px-3 py-2 w-8 text-center" title="Status">St</th>
                                 <th className="px-3 py-2 w-32">Name</th>
                                 <th className="px-3 py-2 w-48">Endpoint</th>
                                 <th className="px-3 py-2 w-24">Port</th>
-                                <th className="px-3 py-2 w-32">Transfer (Rx/Tx)</th>
                                 {!autoGenerateKeys && <th className="px-3 py-2">Keys (Private / Public)</th>}
                                 <th className="px-3 py-2 w-20 text-right">Actions</th>
                             </tr>
@@ -82,9 +64,6 @@ export function NodeTable({
                         <tbody className="divide-y divide-border/50">
                             <AnimatePresence mode="popLayout">
                                 {nodes.map((node, index) => {
-                                    const nodeStatus = status[node.publicKey] || { latestHandshake: 0, transferRx: 0, transferTx: 0 };
-                                    const online = isOnline(nodeStatus.latestHandshake);
-
                                     return (
                                         <motion.tr
                                             key={node.id}
@@ -97,11 +76,6 @@ export function NodeTable({
                                         >
                                             <td className="px-3 py-2 text-center text-muted-foreground font-mono">
                                                 {index + 1}
-                                            </td>
-                                            <td className="px-3 py-2 text-center">
-                                                <div className={`h-2.5 w-2.5 rounded-full mx-auto ${online ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500'}`}
-                                                    title={online ? `Online (Handshake: ${new Date(nodeStatus.latestHandshake * 1000).toLocaleTimeString()})` : "Offline"}
-                                                />
                                             </td>
                                             <td className="px-3 py-2">
                                                 <div className="flex items-center gap-2">
@@ -143,12 +117,6 @@ export function NodeTable({
                                                     onChange={(e) => updateNode(node.id, { listenPort: Number(e.target.value) })}
                                                     className="h-7 text-xs font-mono text-center px-1 bg-background/50 border-transparent focus:border-primary/50 focus:bg-background transition-all"
                                                 />
-                                            </td>
-                                            <td className="px-3 py-2 text-[10px] text-muted-foreground font-mono whitespace-nowrap">
-                                                <div className="flex flex-col">
-                                                    <span className="text-green-600/80">↓ {formatBytes(nodeStatus.transferRx)}</span>
-                                                    <span className="text-blue-600/80">↑ {formatBytes(nodeStatus.transferTx)}</span>
-                                                </div>
                                             </td>
                                             {!autoGenerateKeys && (
                                                 <td className="px-3 py-2">

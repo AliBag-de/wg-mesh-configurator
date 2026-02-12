@@ -7,7 +7,6 @@ import { ClientInput } from "@/lib/types";
 import { Key, Plus, Trash2, Users } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { colorForKey } from "@/lib/color";
-import { formatBytes } from "@/lib/utils";
 import { QRCodeDialog } from "./QRCodeDialog";
 import { useState } from "react";
 import { useMeshStore } from "@/lib/store";
@@ -17,15 +16,8 @@ import { calculateClientIp } from "@/lib/ip-utils";
 import { deriveDeterministicPsk } from "@/lib/psk";
 import { toast } from "sonner";
 
-interface PeerStatus {
-    latestHandshake: number;
-    transferRx: number;
-    transferTx: number;
-}
-
 interface ClientTableProps {
     clients: ClientInput[];
-    status?: Record<string, PeerStatus>;
     addClient: () => void;
     removeClient: (id: string) => void;
     updateClient: (id: string, patch: Partial<ClientInput>) => void;
@@ -35,7 +27,6 @@ interface ClientTableProps {
 
 export function ClientTable({
     clients,
-    status = {},
     addClient,
     removeClient,
     updateClient,
@@ -85,13 +76,6 @@ export function ClientTable({
         }
     };
 
-    // Helper to check if online (handshake < 3 mins ago)
-    const isOnline = (handshake: number) => {
-        if (!handshake) return false;
-        const now = Date.now() / 1000;
-        return (now - handshake) < 180;
-    };
-
     return (
         <div className="rounded-lg border bg-card/50 backdrop-blur-sm overflow-hidden mt-6">
             {/* ... Header ... */}
@@ -118,9 +102,7 @@ export function ClientTable({
                         <thead className="bg-muted/10 text-muted-foreground font-medium border-b">
                             <tr>
                                 <th className="px-3 py-2 w-16 text-center">#</th>
-                                <th className="px-3 py-2 w-8 text-center" title="Status">St</th>
                                 <th className="px-3 py-2 w-32">Name</th>
-                                <th className="px-3 py-2 w-32">Transfer (Rx/Tx)</th>
                                 {!autoGenerateKeys && <th className="px-3 py-2">Keys (Private / Public)</th>}
                                 <th className="px-3 py-2 w-[100px] text-right">Actions</th>
                             </tr>
@@ -128,9 +110,6 @@ export function ClientTable({
                         <tbody className="divide-y divide-border/50">
                             <AnimatePresence mode="popLayout">
                                 {clients.map((client, index) => {
-                                    const clientStatus = status[client.publicKey] || { latestHandshake: 0, transferRx: 0, transferTx: 0 };
-                                    const online = isOnline(clientStatus.latestHandshake);
-
                                     return (
                                         <motion.tr
                                             key={client.id}
@@ -143,11 +122,6 @@ export function ClientTable({
                                         >
                                             <td className="px-3 py-2 text-center text-muted-foreground font-mono">
                                                 C-{index + 1}
-                                            </td>
-                                            <td className="px-3 py-2 text-center">
-                                                <div className={`h-2.5 w-2.5 rounded-full mx-auto ${online ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500'}`}
-                                                    title={online ? `Online (Handshake: ${new Date(clientStatus.latestHandshake * 1000).toLocaleTimeString()})` : "Offline"}
-                                                />
                                             </td>
                                             <td className="px-3 py-2">
                                                 <div className="flex items-center gap-2">
@@ -166,12 +140,6 @@ export function ClientTable({
                                                         onChange={(e) => updateClient(client.id, { name: e.target.value })}
                                                         className="h-7 w-full min-w-[120px] text-xs px-2 bg-background/50 border-transparent focus:border-blue-500/50 focus:bg-background transition-all"
                                                     />
-                                                </div>
-                                            </td>
-                                            <td className="px-3 py-2 text-[10px] text-muted-foreground font-mono whitespace-nowrap">
-                                                <div className="flex flex-col">
-                                                    <span className="text-green-600/80">↓ {formatBytes(clientStatus.transferRx)}</span>
-                                                    <span className="text-blue-600/80">↑ {formatBytes(clientStatus.transferTx)}</span>
                                                 </div>
                                             </td>
                                             {!autoGenerateKeys && (

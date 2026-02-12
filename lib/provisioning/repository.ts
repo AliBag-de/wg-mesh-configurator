@@ -23,6 +23,7 @@ const metaSchema = z.object({
 export type PersistedState = z.infer<typeof metaSchema>;
 
 const DEFAULT_STATE_FILE = process.env.WG_STATE_FILE || "/etc/wireguard/wg-mesh-state.json";
+const DEFAULT_LOCK_FILE = process.env.WG_LOCK_FILE;
 const STALE_LOCK_TIMEOUT_MS = 5000; // 5 seconds timeout for stale locks
 
 // Helper to check if a process is running
@@ -39,13 +40,14 @@ export class StateManager {
     private filePath: string;
     private lockFile: string;
 
-    constructor(filePath: string = DEFAULT_STATE_FILE) {
+    constructor(filePath: string = DEFAULT_STATE_FILE, lockFile?: string) {
         this.filePath = filePath;
-        this.lockFile = `${filePath}.lock`;
+        this.lockFile = lockFile || DEFAULT_LOCK_FILE || `${filePath}.lock`;
     }
 
     private async acquireLock(retries = 20, delay = 100): Promise<void> {
         const myPid = process.pid;
+        await fs.mkdir(path.dirname(this.lockFile), { recursive: true });
 
         for (let i = 0; i < retries; i++) {
             try {
