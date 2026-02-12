@@ -173,7 +173,7 @@ export function NodeTable({
                                                     {node.presharedKey && (
                                                         <div className="relative group mr-2">
                                                             <Key className="h-3.5 w-3.5 text-amber-500 cursor-help" />
-                                                            <div className="absolute right-0 top-6 hidden group-hover:block bg-popover text-popover-foreground text-[10px] p-2 rounded shadow-lg border z-50 whitespace-normal break-all w-48">
+                                                            <div className="absolute  right-0 -top-1 hidden group-hover:block bg-popover text-popover-foreground text-[10px] p-2 rounded shadow-lg border z-50 whitespace-normal break-all w-48">
                                                                 PSK: {node.presharedKey.substring(0, 8)}...
                                                             </div>
                                                         </div>
