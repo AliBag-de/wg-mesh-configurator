@@ -2,6 +2,7 @@ import JSZip from "jszip";
 import crypto from "crypto";
 import { x25519 } from "@noble/curves/ed25519";
 import { GeneratePayload } from "./types";
+import { deriveDeterministicPsk } from "./psk";
 
 type ParsedCidr = {
   base: number;
@@ -10,44 +11,9 @@ type ParsedCidr = {
   last: number;
 };
 
+import { ipToInt, intToIp, parseCidr } from "./ip-utils";
+
 const MAX_IPV4 = 0xffffffff;
-
-function ipToInt(ip: string): number {
-  const parts = ip.split(".").map((part) => Number(part));
-  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) {
-    throw new Error("IPv4 adresi gecersiz.");
-  }
-  return (
-    (parts[0] << 24) +
-    (parts[1] << 16) +
-    (parts[2] << 8) +
-    parts[3]
-  ) >>> 0;
-}
-
-function intToIp(num: number): string {
-  return [
-    (num >>> 24) & 255,
-    (num >>> 16) & 255,
-    (num >>> 8) & 255,
-    num & 255
-  ].join(".");
-}
-
-function parseCidr(cidr: string): ParsedCidr {
-  const [ip, prefixStr] = cidr.split("/");
-  const prefix = Number(prefixStr);
-  if (!ip || Number.isNaN(prefix) || prefix < 8 || prefix > 30) {
-    throw new Error("CIDR gecersiz. Ornek: 10.20.0.0/24");
-  }
-  const base = ipToInt(ip);
-  const size = 2 ** (32 - prefix);
-  const last = base + size - 1;
-  if (last > MAX_IPV4) {
-    throw new Error("CIDR araligi gecersiz.");
-  }
-  return { base, prefix, size, last };
-}
 
 function formatEndpoint(endpoint: string, version: "ipv4" | "ipv6", port: number) {
   if (version === "ipv6") {
@@ -74,10 +40,6 @@ function neighborIndexes(index: number, count: number): number[] {
   }
   neighbors.delete(index);
   return Array.from(neighbors);
-}
-
-function generatePsk() {
-  return crypto.randomBytes(32).toString("base64");
 }
 
 function encodeBase64(bytes: Uint8Array) {
@@ -131,6 +93,7 @@ export async function generateZip(payload: GeneratePayload) {
 
   ensure(nodes.length > 0, "En az 1 node gerekli.");
   ensure(networkCidr.length > 0, "IPv4 CIDR gerekli.");
+  ensure(interfaceName.trim().length > 0, "Interface ismi gerekli.");
 
   const parsed = parseCidr(networkCidr);
   const serverStart = parsed.base + 1;
@@ -185,6 +148,9 @@ export async function generateZip(payload: GeneratePayload) {
     return client;
   });
 
+  const resolvedNodeMap = new Map<string, typeof resolvedNodes[number]>();
+  resolvedNodes.forEach((node) => resolvedNodeMap.set(node.name, node));
+
   const pskMap = new Map<string, string>();
   const getPairKey = (a: string, b: string) => {
     const sorted = [a, b].sort();
@@ -193,12 +159,13 @@ export async function generateZip(payload: GeneratePayload) {
   const getPsk = (a: string, b: string) => {
     const key = getPairKey(a, b);
     if (!pskMap.has(key)) {
-      pskMap.set(key, generatePsk());
+      pskMap.set(key, deriveDeterministicPsk(a, b));
     }
     return pskMap.get(key)!;
   };
 
   const zip = new JSZip();
+  const interfaceFilename = `${safeName(interfaceName)}.conf`;
   const manifest: Record<string, unknown> = {
     networkCidr,
     interfaceName,
@@ -252,15 +219,30 @@ export async function generateZip(payload: GeneratePayload) {
       zip.file(`nodes/${safeName(node.name)}/babeld.conf`, babelConfig);
     }
 
-    zip.file(`nodes/${safeName(node.name)}/wg0.conf`, nodeFileLines.join("\n"));
+    if (gatewayNodeNames.includes(node.name)) {
+      for (let clientIndex = 0; clientIndex < resolvedClients.length; clientIndex += 1) {
+        const client = resolvedClients[clientIndex];
+        const clientIp = clientIps[clientIndex];
+        const psk = getPsk(client.name, node.name);
+        nodeFileLines.push(
+          "",
+          `# ${client.name}`,
+          "[Peer]",
+          `PublicKey = ${client.publicKey}`,
+          `PresharedKey = ${psk}`,
+          `AllowedIPs = ${clientIp}/32`
+        );
+      }
+    }
+
+    zip.file(`nodes/${safeName(node.name)}/${interfaceFilename}`, nodeFileLines.join("\n"));
 
     (manifest.nodes as unknown[]).push({
       name: node.name,
       address: `${nodeIp}/32`,
       endpoint: node.endpoint,
       listenPort: node.listenPort,
-      publicKey: node.publicKey,
-      privateKey: node.privateKey
+      publicKey: node.publicKey
     });
     (manifest.neighbors as Record<string, string[]>)[node.name] = neighbors.map(
       (idx) => resolvedNodes[idx].name
@@ -276,7 +258,10 @@ export async function generateZip(payload: GeneratePayload) {
     ];
 
     for (const gatewayName of gatewayNodeNames) {
-      const gateway = nodeMap.get(gatewayName)!;
+      const gateway = resolvedNodeMap.get(gatewayName);
+      if (!gateway) {
+        throw new Error(`Gateway node bulunamadi: ${gatewayName}`);
+      }
       const psk = getPsk(client.name, gateway.name);
       clientLines.push(
         "",
@@ -294,13 +279,12 @@ export async function generateZip(payload: GeneratePayload) {
       );
     }
 
-    zip.file(`clients/${safeName(client.name)}/wg0.conf`, clientLines.join("\n"));
+    zip.file(`clients/${safeName(client.name)}/${interfaceFilename}`, clientLines.join("\n"));
 
     (manifest.clients as unknown[]).push({
       name: client.name,
       address: `${clientIp}/32`,
       publicKey: client.publicKey,
-      privateKey: client.privateKey,
       gateways: gatewayNodeNames
     });
   });

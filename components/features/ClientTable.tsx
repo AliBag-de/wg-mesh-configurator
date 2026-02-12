@@ -13,6 +13,9 @@ import { useState } from "react";
 import { useMeshStore } from "@/lib/store";
 import { generateClientConfig } from "@/lib/qr-config";
 import { QrCode as QrIcon } from "lucide-react";
+import { calculateClientIp } from "@/lib/ip-utils";
+import { deriveDeterministicPsk } from "@/lib/psk";
+import { toast } from "sonner";
 
 interface PeerStatus {
     latestHandshake: number;
@@ -43,50 +46,43 @@ export function ClientTable({
     const { nodes, networkCidr, endpointVersion, persistentKeepalive, gatewayNodeNames } = useMeshStore();
 
     const handleShowQR = (client: ClientInput) => {
-        // Find gateway nodes
-        const gatewayNodes = nodes.filter(n => gatewayNodeNames.includes(n.name));
+        try {
+            const gatewayNodes = nodes.filter(n => gatewayNodeNames.includes(n.name));
+            if (gatewayNodes.length === 0) {
+                toast.error("QR için en az bir gateway seçmelisiniz.");
+                return;
+            }
 
-        // Mock PSKs for now or retrieve from store if available. 
-        // In a real app complexity, we'd need the full psk map. 
-        // For this UI demo, we'll re-generate a PSK or use a placeholder if not stored.
-        // Since we don't store PSKs in the main store (they are generated at export), 
-        // we might strictly need to generate them here or change store structure.
-        // For simplicity in this "Configurator", we will generate a temporary PSK for the QR 
-        // OR we can say "PSKs are generated on download". 
-        // ACTUALLY: The user wants to scan to connect. This implies the config MUST match what is on the server.
-        // But this is a "Config Generator". The server config is generated AT THE SAME TIME.
-        // So showing a QR code here is predictive.
-        // Let's generate a consistent PSK based on names for visual stability, 
-        // or accept that this is a "preview" config.
-        // BETTER: We can't easily show a valid QR if PSKs are random per download.
-        // We will mock the PSK or generate a deterministic one for the QR demo.
+            if (!client.privateKey) {
+                toast.error("QR üretmek için client private key gerekli.");
+                return;
+            }
 
-        const pskMap: Record<string, string> = {};
-        gatewayNodes.forEach(gw => {
-            // We'll generate a dummy PSK for the QR view to demonstrate functionality
-            // In a real persistent app, PSKs should be stored in the Client/Node models.
-            pskMap[gw.name] = "Zd7... (Generated on Download)";
-        });
+            const clientIndex = clients.findIndex((c) => c.id === client.id);
+            if (clientIndex === -1) {
+                toast.error("Client bulunamadı.");
+                return;
+            }
 
-        const config = generateClientConfig(
-            client,
-            "10.0.0.x", // We need to calculate IP. This is hard without the full logic.
-            // Simplified: Just show the structure or calculate cleanly?
-            // Let's fetch the index to calculate IP same as `generate.ts`
-            gatewayNodes,
-            networkCidr,
-            endpointVersion,
-            persistentKeepalive,
-            pskMap
-        );
+            const pskMap: Record<string, string> = {};
+            gatewayNodes.forEach(gw => {
+                pskMap[gw.name] = deriveDeterministicPsk(client.name, gw.name);
+            });
 
-        // We need the IP. Let's calculate it roughly.
-        // Base IP logic is complex to duplicate.
-        // Refactoring `generate.ts` to export IP logic would be best.
-        // For now, allow me to just pass a placeholder IP to show the UI works.
-        // "10.xx.xx.xx"
+            const config = generateClientConfig(
+                client,
+                calculateClientIp(networkCidr, clientIndex),
+                gatewayNodes,
+                networkCidr,
+                endpointVersion,
+                persistentKeepalive,
+                pskMap
+            );
 
-        setQrClient({ name: client.name, config });
+            setQrClient({ name: client.name, config });
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "QR konfigürü üretilemedi.");
+        }
     };
 
     // Helper to check if online (handshake < 3 mins ago)

@@ -6,7 +6,8 @@ export async function POST(request: NextRequest) {
   try {
     const payload = (await request.json()) as GeneratePayload;
     const { content, filename } = await generateZip(payload);
-    return new Response(content, {
+    const body = Uint8Array.from(content);
+    return new Response(body, {
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="${filename}"`

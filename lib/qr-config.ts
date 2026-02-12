@@ -21,8 +21,7 @@ export function generateClientConfig(
     const lines = [
         "[Interface]",
         `Address = ${clientIp}/32`,
-        `PrivateKey = ${client.privateKey}`,
-        "DNS = 1.1.1.1" // Optional, but good for full tunnel
+        `PrivateKey = ${client.privateKey}`
     ];
 
     gatewayNodes.forEach(gateway => {
@@ -33,7 +32,7 @@ export function generateClientConfig(
             "[Peer]",
             `PublicKey = ${gateway.publicKey}`,
             `PresharedKey = ${psk}`,
-            `AllowedIPs = 0.0.0.0/0, ::/0`, // Assume full tunnel for easy mobile use, or restrict to networkCidr
+            `AllowedIPs = ${networkCidr}`,
             `Endpoint = ${formatEndpoint(gateway.endpoint, endpointVersion, gateway.listenPort)}`,
             `PersistentKeepalive = ${persistentKeepalive}`
         );

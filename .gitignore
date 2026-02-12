@@ -6,3 +6,4 @@ node_modules/
 *.conf  
 wg0.conf
 __.git
+.vscode
