@@ -77,7 +77,7 @@ function ensure(condition: boolean, message: string) {
   }
 }
 
-export async function generateZip(payload: GeneratePayload) {
+export function resolveMeshState(payload: GeneratePayload) {
   const {
     networkCidr,
     interfaceName,
@@ -114,39 +114,125 @@ export async function generateZip(payload: GeneratePayload) {
   const nodeIps = nodes.map((_, i) => intToIp(serverStart + i));
   const clientIps = clients.map((_, i) => intToIp(clientStart + i));
 
-  const resolvedNodes = nodes.map((node) => {
+  const resolvedNodes = nodes.map((node, i) => {
+    let res = { ...node, address: `${nodeIps[i]}/32` };
     if (autoGenerateKeys && !node.publicKey && !node.privateKey) {
       const keypair = generateKeypair();
-      return { ...node, ...keypair };
+      res = { ...res, ...keypair };
+    } else if (node.privateKey && !node.publicKey) {
+      res = { ...res, publicKey: derivePublicKey(node.privateKey) };
     }
-    if (node.privateKey && !node.publicKey) {
-      return { ...node, publicKey: derivePublicKey(node.privateKey) };
-    }
-    if (!node.privateKey) {
-      throw new Error(`Node ${node.name} icin private key gerekli.`);
-    }
-    if (!node.publicKey) {
-      throw new Error(`Node ${node.name} icin public key gerekli.`);
-    }
-    return node;
+    return res;
   });
 
-  const resolvedClients = clients.map((client) => {
+  const resolvedClients = clients.map((client, i) => {
+    let res = { ...client, address: `${clientIps[i]}/32` };
     if (autoGenerateKeys && !client.publicKey && !client.privateKey) {
       const keypair = generateKeypair();
-      return { ...client, ...keypair };
+      res = { ...res, ...keypair };
+    } else if (client.privateKey && !client.publicKey) {
+      res = { ...res, publicKey: derivePublicKey(client.privateKey) };
     }
-    if (client.privateKey && !client.publicKey) {
-      return { ...client, publicKey: derivePublicKey(client.privateKey) };
-    }
-    if (!client.privateKey) {
-      throw new Error(`Client ${client.name} icin private key gerekli.`);
-    }
-    if (!client.publicKey) {
-      throw new Error(`Client ${client.name} icin public key gerekli.`);
-    }
-    return client;
+    return res;
   });
+
+  return {
+    resolvedNodes,
+    resolvedClients,
+    nodeIps,
+    clientIps,
+    parsed,
+    payload
+  };
+}
+
+export function generateNodeConfig(
+  nodeName: string,
+  resolvedNodes: any[],
+  resolvedClients: any[],
+  nodeIps: string[],
+  config: {
+    interfaceName: string;
+    endpointVersion: "ipv4" | "ipv6";
+    persistentKeepalive: number;
+    includeIpForwarding: boolean;
+    gatewayNodeNames: string[];
+  },
+  pskGetter: (a: string, b: string) => string
+): string {
+  const nodeIndex = resolvedNodes.findIndex((n) => n.name === nodeName);
+  if (nodeIndex === -1) throw new Error(`Node not found: ${nodeName}`);
+
+  const node = resolvedNodes[nodeIndex];
+  const nodeIp = nodeIps[nodeIndex];
+  const neighbors = neighborIndexes(nodeIndex, resolvedNodes.length);
+
+  const lines: string[] = [
+    "[Interface]",
+    `Address = ${nodeIp}/32`,
+    `ListenPort = ${node.listenPort}`,
+    `PrivateKey = ${node.privateKey}`
+  ];
+
+  if (config.includeIpForwarding) {
+    lines.push(
+      "PostUp = sysctl -w net.ipv4.ip_forward=1",
+      "PostDown = sysctl -w net.ipv4.ip_forward=0"
+    );
+  }
+
+  for (const neighborIndex of neighbors) {
+    const peer = resolvedNodes[neighborIndex];
+    const peerIp = nodeIps[neighborIndex];
+    const psk = pskGetter(node.name, peer.name);
+    lines.push(
+      "",
+      `# ${peer.name}`,
+      "[Peer]",
+      `PublicKey = ${peer.publicKey}`,
+      `PresharedKey = ${psk}`,
+      `AllowedIPs = ${peerIp}/32`,
+      `Endpoint = ${formatEndpoint(peer.endpoint, config.endpointVersion, peer.listenPort)}`,
+      `PersistentKeepalive = ${config.persistentKeepalive}`
+    );
+  }
+
+  if (config.gatewayNodeNames.includes(node.name)) {
+    for (const client of resolvedClients) {
+      const psk = pskGetter(client.name, node.name);
+      lines.push(
+        "",
+        `# ${client.name}`,
+        "[Peer]",
+        `PublicKey = ${client.publicKey}`,
+        `PresharedKey = ${psk}`,
+        `AllowedIPs = ${client.address}`
+      );
+    }
+  }
+
+  return lines.join("\n");
+}
+
+export async function generateZip(payload: GeneratePayload) {
+  const {
+    resolvedNodes,
+    resolvedClients,
+    nodeIps,
+    clientIps,
+    payload: p
+  } = resolveMeshState(payload);
+
+  const {
+    networkCidr,
+    interfaceName,
+    endpointVersion,
+    persistentKeepalive,
+    includeIpForwarding,
+    enableBabel,
+    autoGenerateKeys,
+    gatewayNodeNames
+  } = p;
 
   const resolvedNodeMap = new Map<string, typeof resolvedNodes[number]>();
   resolvedNodes.forEach((node) => resolvedNodeMap.set(node.name, node));
@@ -180,35 +266,20 @@ export async function generateZip(payload: GeneratePayload) {
   resolvedNodes.forEach((node, i) => {
     const nodeIp = nodeIps[i];
     const neighbors = neighborIndexes(i, resolvedNodes.length);
-    const nodeFileLines: string[] = [
-      "[Interface]",
-      `Address = ${nodeIp}/32`,
-      `ListenPort = ${node.listenPort}`,
-      `PrivateKey = ${node.privateKey}`
-    ];
-
-    if (includeIpForwarding) {
-      nodeFileLines.push(
-        "PostUp = sysctl -w net.ipv4.ip_forward=1",
-        "PostDown = sysctl -w net.ipv4.ip_forward=0"
-      );
-    }
-
-    for (const neighborIndex of neighbors) {
-      const peer = resolvedNodes[neighborIndex];
-      const peerIp = nodeIps[neighborIndex];
-      const psk = getPsk(node.name, peer.name);
-      nodeFileLines.push(
-        "",
-        `# ${peer.name}`,
-        "[Peer]",
-        `PublicKey = ${peer.publicKey}`,
-        `PresharedKey = ${psk}`,
-        `AllowedIPs = ${peerIp}/32`,
-        `Endpoint = ${formatEndpoint(peer.endpoint, endpointVersion, peer.listenPort)}`,
-        `PersistentKeepalive = ${persistentKeepalive}`
-      );
-    }
+    const nodeConfig = generateNodeConfig(
+      node.name,
+      resolvedNodes,
+      resolvedClients,
+      nodeIps,
+      {
+        interfaceName,
+        endpointVersion,
+        persistentKeepalive,
+        includeIpForwarding,
+        gatewayNodeNames
+      },
+      getPsk
+    );
 
     if (enableBabel) {
       const babelConfig = [
@@ -219,23 +290,7 @@ export async function generateZip(payload: GeneratePayload) {
       zip.file(`nodes/${safeName(node.name)}/babeld.conf`, babelConfig);
     }
 
-    if (gatewayNodeNames.includes(node.name)) {
-      for (let clientIndex = 0; clientIndex < resolvedClients.length; clientIndex += 1) {
-        const client = resolvedClients[clientIndex];
-        const clientIp = clientIps[clientIndex];
-        const psk = getPsk(client.name, node.name);
-        nodeFileLines.push(
-          "",
-          `# ${client.name}`,
-          "[Peer]",
-          `PublicKey = ${client.publicKey}`,
-          `PresharedKey = ${psk}`,
-          `AllowedIPs = ${clientIp}/32`
-        );
-      }
-    }
-
-    zip.file(`nodes/${safeName(node.name)}/${interfaceFilename}`, nodeFileLines.join("\n"));
+    zip.file(`nodes/${safeName(node.name)}/${interfaceFilename}`, nodeConfig);
 
     (manifest.nodes as unknown[]).push({
       name: node.name,

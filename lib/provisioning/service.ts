@@ -2,9 +2,13 @@ import { randomUUID } from "crypto";
 import {
   ApplyPeersRequest,
   AuditQuery,
+  DeployConfig,
   Peer,
   ReconcileRequest,
-  ToggleInterfaceRequest
+  ToggleInterfaceRequest,
+  RuntimeInterface,
+  RuntimePeer,
+  SystemInfo
 } from "./contracts";
 import { StateManager, PersistedState } from "./repository";
 import { WireGuardAdapter } from "./adapter";
@@ -19,6 +23,14 @@ type AuditEntry = {
   action: string;
   peerId?: string;
   meta?: unknown;
+};
+
+type InterfacePeer = Peer & {
+  runtime: {
+    latestHandshake: number;
+    transferRx: number;
+    transferTx: number;
+  };
 };
 
 type StackOp =
@@ -44,19 +56,24 @@ function pushAudit(name: string, entry: Omit<AuditEntry, "id" | "at">) {
 }
 
 function getPeersForInterface(state: PersistedState, interfaceName: string): Peer[] {
-  return state.peers.filter(p => p.interface === interfaceName || (!p.interface && interfaceName === "wg0"));
+  return state.peers.filter((p: Peer) => p.interface === interfaceName || (!p.interface && interfaceName === "wg0"));
 }
 
 export async function listInterfaces() {
   const state = await stateManager.load();
   const discoveredNames = await wgAdapter.listInterfaces();
 
-  const allNames = new Set([
+  const peerInterfaceNames = new Set(
+    state.peers.map((p: Peer) => p.interface || "wg0")
+  );
+
+  const allNames = new Set<string>([
     ...Object.keys(state.interfaces),
-    ...discoveredNames
+    ...(discoveredNames as string[]),
+    ...(Array.from(peerInterfaceNames) as string[])
   ]);
 
-  return Array.from(allNames).map(name => {
+  return (Array.from(allNames) as string[]).map((name: string) => {
     const iface = state.interfaces[name];
     const peerCount = getPeersForInterface(state, name).length;
 
@@ -77,7 +94,7 @@ export async function listInterfaces() {
       name,
       isUp: true, // If 'wg show' sees it, it's at least configured
       listenPort: 0,
-      peerCount: 0, // We'll find peers when we click it
+      peerCount, // Use the actual calculated peer count
       lastSyncAt: state.updatedAt
     };
   });
@@ -87,8 +104,11 @@ export async function getInterfaceDetails(name: string) {
   const state = await stateManager.load();
   let iface = state.interfaces[name];
 
-  // If not in state, try to get it from runtime
-  const runtimeData = await wgAdapter.getInterface(name);
+  const [runtimeData, systemInfo] = await Promise.all([
+    wgAdapter.getInterface(name),
+    wgAdapter.getSystemInfo()
+  ]);
+
   if (!runtimeData.exists && !iface) {
     throw new Error("Interface not found");
   }
@@ -96,7 +116,7 @@ export async function getInterfaceDetails(name: string) {
   // If it exists in runtime but not in state, create a synthetic state entry
   if (!iface) {
     iface = {
-      listenPort: 0, // We don't know it easily from dump without more parsing
+      listenPort: runtimeData.listenPort || 0,
       addressCidr: "unknown/24",
       revision: 0,
       isUp: true
@@ -104,9 +124,13 @@ export async function getInterfaceDetails(name: string) {
   }
 
   const { peers: runtimePeers } = runtimeData;
-  const runtimeMap = new Map(runtimePeers.map(p => [p.publicKey, p]));
+  const runtimeMap = new Map<string, RuntimePeer>(runtimePeers.map((p: RuntimePeer) => [p.publicKey, p]));
 
-  const peers = getPeersForInterface(state, name).map((peer) => {
+  // Get peers from state
+  const statePeers = getPeersForInterface(state, name);
+  const stateKeys = new Set(statePeers.map((p: Peer) => p.publicKey));
+
+  const peers: InterfacePeer[] = statePeers.map((peer: Peer) => {
     const runtime = runtimeMap.get(peer.publicKey);
     return {
       ...peer,
@@ -118,27 +142,66 @@ export async function getInterfaceDetails(name: string) {
     };
   });
 
+  // Add discovered peers that are NOT in state as unmanaged peers
+  for (const runtime of runtimePeers) {
+    if (!stateKeys.has(runtime.publicKey)) {
+      peers.push({
+        peerId: `discovered_${runtime.publicKey.slice(0, 12)}`,
+        name: `discovered-${runtime.publicKey.slice(0, 8)}`,
+        publicKey: runtime.publicKey,
+        allowedIps: runtime.allowedIps,
+        endpoint: runtime.endpoint,
+        persistentKeepalive: runtime.persistentKeepalive,
+        isActive: true,
+        interface: name,
+        isUnmanaged: true,
+        runtime: {
+          latestHandshake: runtime.latestHandshake,
+          transferRx: runtime.transferRx,
+          transferTx: runtime.transferTx
+        }
+      });
+    }
+  }
+
+  // Mask private key if present
+  const maskedPrivateKey = iface.privateKey
+    ? iface.privateKey.substring(0, 4) + "..." + iface.privateKey.substring(iface.privateKey.length - 4)
+    : undefined;
+
   return {
     interface: {
       name: name,
       isUp: iface.isUp,
-      listenPort: iface.listenPort,
+      listenPort: runtimeData.listenPort || iface.listenPort,
       addressCidr: iface.addressCidr,
-      revision: iface.revision
+      revision: iface.revision,
+      publicKey: runtimeData.publicKey,
+      privateKey: maskedPrivateKey,
+      fwmark: runtimeData.fwmark,
+      mtu: runtimeData.mtu,
+      dns: runtimeData.dns,
+      table: runtimeData.table
     },
+    system: systemInfo,
     peers
   };
 }
 
+class RevisionConflictError extends Error {
+  code = "REVISION_CONFLICT";
+  details: { expected: number; received: number };
+
+  constructor(expected: number, received: number) {
+    super("Revision mismatch");
+    this.name = "RevisionConflictError";
+    this.details = { expected, received };
+  }
+}
+
 function assertRevision(currentRevision: number, expectedRevision: number) {
   if (currentRevision !== expectedRevision) {
-    const error = new Error("Revision mismatch");
-    (error as Error & { code: string; details: unknown }).code = "REVISION_CONFLICT";
-    (error as Error & { code: string; details: unknown }).details = {
-      expected: currentRevision,
-      received: expectedRevision
-    };
-    throw error;
+    throw new RevisionConflictError(currentRevision, expectedRevision);
   }
 }
 
@@ -147,11 +210,21 @@ export async function applyPeerOperations(
   input: ApplyPeersRequest
 ) {
   const initialState = await stateManager.load();
-  const ifaceState = initialState.interfaces[name];
-  if (!ifaceState) throw new Error("Interface not found");
+  let ifaceState = initialState.interfaces[name];
+  if (!ifaceState) {
+    const runtime = await wgAdapter.getInterface(name);
+    if (!runtime.exists) throw new Error("Interface not found");
+    // Synthetic state if it exists in runtime but not in state
+    ifaceState = {
+      listenPort: 0,
+      addressCidr: "unknown/24",
+      revision: 0,
+      isUp: true
+    };
+  }
   assertRevision(ifaceState.revision, input.revision);
 
-  const currentPeers = getPeersForInterface(initialState, name).map((peer) => ({ ...peer }));
+  const currentPeers = getPeersForInterface(initialState, name).map((peer: Peer) => ({ ...peer }));
   const runtimeOps: RuntimeOp[] = [];
   const auditLog: Omit<AuditEntry, "id" | "at">[] = [];
 
@@ -209,7 +282,7 @@ export async function applyPeerOperations(
   }
 
   if (input.dryRun) {
-    const plan = runtimeOps.map((op) => {
+    const plan = runtimeOps.map((op: RuntimeOp) => {
       if (op.type === "remove") {
         return `[REMOVE] wg set ${name} peer ${op.peer.publicKey} remove`;
       }
@@ -257,11 +330,21 @@ export async function applyPeerOperations(
     }
 
     const revision = await stateManager.update(async (state) => {
-      const iface = state.interfaces[name];
-      if (!iface) throw new Error("Interface not found");
+      let iface = state.interfaces[name];
+      if (!iface) {
+        const runtime = await wgAdapter.getInterface(name);
+        if (!runtime.exists) throw new Error("Interface not found");
+        iface = {
+          listenPort: 0,
+          addressCidr: "unknown/24",
+          revision: 0,
+          isUp: true
+        };
+        state.interfaces[name] = iface;
+      }
       assertRevision(iface.revision, input.revision);
 
-      const otherPeers = state.peers.filter((p) => p.interface !== name && (p.interface || name !== "wg0"));
+      const otherPeers = state.peers.filter((p: Peer) => p.interface !== name && (p.interface || name !== "wg0"));
       state.peers = [...otherPeers, ...currentPeers];
       iface.revision += 1;
       state.updatedAt = new Date().toISOString();
@@ -286,8 +369,17 @@ export async function toggleInterfaceState(
   input: ToggleInterfaceRequest
 ) {
   const state = await stateManager.load();
-  const iface = state.interfaces[name];
-  if (!iface) throw new Error("Interface not found");
+  let iface = state.interfaces[name];
+  if (!iface) {
+    const runtime = await wgAdapter.getInterface(name);
+    if (!runtime.exists) throw new Error("Interface not found");
+    iface = {
+      listenPort: 0,
+      addressCidr: "unknown/24",
+      revision: 0,
+      isUp: true
+    };
+  }
   assertRevision(iface.revision, input.revision);
 
   if (input.dryRun) {
@@ -297,8 +389,18 @@ export async function toggleInterfaceState(
   await wgAdapter.toggleInterface(name, input.isUp);
   try {
     const revision = await stateManager.update(async (lockedState) => {
-      const lockedIface = lockedState.interfaces[name];
-      if (!lockedIface) throw new Error("Interface not found");
+      let lockedIface = lockedState.interfaces[name];
+      if (!lockedIface) {
+        const runtime = await wgAdapter.getInterface(name);
+        if (!runtime.exists) throw new Error("Interface not found");
+        lockedIface = {
+          listenPort: 0,
+          addressCidr: "unknown/24",
+          revision: 0,
+          isUp: true
+        };
+        lockedState.interfaces[name] = lockedIface;
+      }
       assertRevision(lockedIface.revision, input.revision);
 
       lockedIface.isUp = input.isUp;
@@ -323,18 +425,28 @@ export async function reconcileInterface(
   name: string,
   input: ReconcileRequest
 ) {
-  const state = await stateManager.load();
-  const iface = state.interfaces[name];
-  if (!iface) throw new Error("Interface not found");
+  const initialState = await stateManager.load();
+  let iface = initialState.interfaces[name];
+  if (!iface) {
+    const runtime = await wgAdapter.getInterface(name);
+    if (!runtime.exists) throw new Error("Interface not found");
+    // Synthetic state if it exists in runtime but not in state
+    iface = {
+      listenPort: 0,
+      addressCidr: "unknown/24",
+      revision: 0,
+      isUp: true
+    };
+  }
   assertRevision(iface.revision, input.revision);
 
-  const interfacePeers = getPeersForInterface(state, name);
+  const interfacePeers = getPeersForInterface(initialState, name);
   const { peers: runtimePeers } = await wgAdapter.getInterface(name);
-  const runtimeKeys = new Set(runtimePeers.map((p) => p.publicKey));
-  const stateKeys = new Set(interfacePeers.map((p) => p.publicKey));
+  const runtimeKeys = new Set(runtimePeers.map((p: RuntimePeer) => p.publicKey));
+  const stateKeys = new Set(interfacePeers.map((p: Peer) => p.publicKey));
 
-  const missingInRuntime = interfacePeers.filter((p) => p.isActive && !runtimeKeys.has(p.publicKey));
-  const zombies = runtimePeers.filter((p) => !stateKeys.has(p.publicKey));
+  const missingInRuntime = interfacePeers.filter((p: Peer) => p.isActive && !runtimeKeys.has(p.publicKey));
+  const zombies = runtimePeers.filter((p: RuntimePeer) => !stateKeys.has(p.publicKey));
   const driftFound = missingInRuntime.length > 0 || zombies.length > 0;
 
   let fixed = 0;
@@ -380,14 +492,24 @@ export async function reconcileInterface(
   }
 
   const revision = await stateManager.update(async (lockedState) => {
-    const lockedIface = lockedState.interfaces[name];
-    if (!lockedIface) throw new Error("Interface not found");
+    let lockedIface = lockedState.interfaces[name];
+    if (!lockedIface) {
+      const runtime = await wgAdapter.getInterface(name);
+      if (!runtime.exists) throw new Error("Interface not found");
+      lockedIface = {
+        listenPort: 0,
+        addressCidr: "unknown/24",
+        revision: 0,
+        isUp: true
+      };
+      lockedState.interfaces[name] = lockedIface;
+    }
     assertRevision(lockedIface.revision, input.revision);
 
     let changed = false;
 
     if (input.mode === "runtime_to_state") {
-      const nextPeers = getPeersForInterface(lockedState, name).map((peer) => ({ ...peer }));
+      const nextPeers = getPeersForInterface(lockedState, name).map((peer: Peer) => ({ ...peer }));
       for (const peer of nextPeers) {
         if (peer.isActive && !runtimeKeys.has(peer.publicKey)) {
           peer.isActive = false;
@@ -410,7 +532,7 @@ export async function reconcileInterface(
         changed = true;
       }
 
-      const otherPeers = lockedState.peers.filter((p) => p.interface !== name && (p.interface || name !== "wg0"));
+      const otherPeers = lockedState.peers.filter((p: Peer) => p.interface !== name && (p.interface || name !== "wg0"));
       lockedState.peers = [...otherPeers, ...nextPeers];
     } else if (fixed > 0) {
       changed = true;
@@ -449,4 +571,60 @@ export async function getAudit(name: string, query: AuditQuery) {
     items,
     nextCursor: next
   };
+}
+
+export async function deployMeshConfig(config: DeployConfig) {
+  const { interface: iface, peers } = config;
+  const name = iface.name;
+
+  const newPeers: Peer[] = peers.map((p: any) => ({
+    peerId: randomUUID(),
+    name: p.name,
+    publicKey: p.publicKey,
+    allowedIps: p.allowedIps,
+    endpoint: p.endpoint,
+    presharedKey: p.presharedKey,
+    persistentKeepalive: 25,
+    isActive: true,
+    interface: name
+  }));
+
+  await stateManager.update(async (state) => {
+    // 1. Prepare Interface State
+    state.interfaces[name] = {
+      listenPort: iface.listenPort,
+      addressCidr: iface.addressCidr,
+      revision: (state.interfaces[name]?.revision || 0) + 1,
+      isUp: true,
+      privateKey: iface.privateKey
+    };
+
+    // 2. Clear existing peers for this interface and add new ones
+    const otherPeers = state.peers.filter((p: Peer) => p.interface !== name && (p.interface || name !== "wg0"));
+
+    state.peers = [...otherPeers, ...newPeers];
+    state.updatedAt = new Date().toISOString();
+  });
+
+  // 3. Apply to Runtime
+  // Ensure interface is up with new settings
+  await wgAdapter.upInterface(name, {
+    privateKey: iface.privateKey,
+    listenPort: iface.listenPort,
+    address: iface.addressCidr
+  });
+
+  // Purge runtime peers and add new ones (Reconciliation logic)
+  const { peers: runtimePeers } = await wgAdapter.getInterface(name);
+  for (const rp of runtimePeers) {
+    await wgAdapter.removePeer(name, rp.publicKey, { ignoreIfMissing: true });
+  }
+
+  for (const p of newPeers) {
+    await wgAdapter.addPeer(name, p);
+  }
+
+  pushAudit(name, { actor: "admin", action: "interface.deploy", meta: { node: name, peerCount: peers.length } });
+
+  return { success: true };
 }

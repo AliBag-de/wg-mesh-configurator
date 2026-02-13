@@ -17,7 +17,9 @@ export const peerSchema = z.object({
   endpoint: z.string().min(3).optional(),
   persistentKeepalive: z.number().int().min(0).max(65535).optional(),
   isActive: z.boolean(),
-  interface: z.string().min(1).max(32).optional() // Scope peer to interface
+  presharedKey: z.string().min(8).optional(),
+  interface: z.string().min(1).max(32).optional(), // Scope peer to interface
+  isUnmanaged: z.boolean().optional() // Flag for peers found in runtime but not in state
 });
 
 export const applyAddOperationSchema = z.object({
@@ -33,6 +35,7 @@ export const applyUpdateOperationSchema = z.object({
       name: z.string().min(1).max(128).optional(),
       allowedIps: z.array(z.string().min(3)).min(1).optional(),
       endpoint: z.string().min(3).optional(),
+      presharedKey: z.string().min(8).optional(),
       persistentKeepalive: z.number().int().min(0).max(65535).optional()
     })
     .refine((value) => Object.keys(value).length > 0, {
@@ -96,4 +99,56 @@ export const apiErrorCodeSchema = z.enum([
 ]);
 
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
+
+export type DeployPeer = {
+  name: string;
+  publicKey: string;
+  allowedIps: string[];
+  endpoint?: string;
+  presharedKey?: string;
+};
+
+export type DeployConfig = {
+  interface: {
+    name: string;
+    addressCidr: string;
+    listenPort: number;
+    privateKey: string;
+    publicKey: string;
+  };
+  peers: DeployPeer[];
+};
+
+export type RuntimeStats = {
+  latestHandshake: number;
+  transferRx: number;
+  transferTx: number;
+};
+
+export type RuntimePeer = RuntimeStats & {
+  publicKey: string;
+  presharedKey?: string;
+  endpoint?: string;
+  allowedIps: string[];
+  persistentKeepalive?: number;
+};
+
+export type RuntimeInterface = {
+  exists: boolean;
+  name?: string;
+  publicKey?: string;
+  privateKey?: string;
+  listenPort?: number;
+  fwmark?: number;
+  mtu?: number;
+  dns?: string;
+  table?: string;
+  confPath?: string;
+  peers: RuntimePeer[];
+};
+
+export type SystemInfo = {
+  hostname: string;
+  version: string;
+};
 

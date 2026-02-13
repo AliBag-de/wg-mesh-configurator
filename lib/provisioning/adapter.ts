@@ -1,6 +1,7 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { Peer } from "./contracts";
+import { promises as fs } from "fs";
+import { Peer, RuntimeInterface, RuntimePeer, SystemInfo } from "./contracts";
 
 // execFile is safer than exec as it doesn't spawn a shell by default
 const execFileAsync = promisify(execFile);
@@ -34,19 +35,27 @@ export class WireGuardAdapter {
         }
     }
 
-    async getInterface(name: string) {
+    async getInterface(name: string): Promise<RuntimeInterface> {
         try {
-            // wg show <interface> dump
+            // 1. wg show <interface> dump
             const output = await this.runCommand("wg", ["show", name, "dump"]);
             const lines = output.trim().split("\n");
 
             if (lines.length === 0) return { exists: false, peers: [] };
 
-            const peers: any[] = [];
+            const peers: RuntimePeer[] = [];
+            let interfaceInfo: Partial<RuntimeInterface> = {};
 
-            for (const line of lines) {
-                const parts = line.split("\t");
-                if (parts.length === 8) {
+            for (let i = 0; i < lines.length; i++) {
+                const parts = lines[i].split("\t");
+                if (i === 0 && parts.length === 4) {
+                    interfaceInfo = {
+                        privateKey: parts[0] === "(none)" ? undefined : parts[0],
+                        publicKey: parts[1] === "(none)" ? undefined : parts[1],
+                        listenPort: parseInt(parts[2]),
+                        fwmark: parts[3] === "off" ? undefined : parseInt(parts[3])
+                    };
+                } else if (parts.length === 8) {
                     peers.push({
                         publicKey: parts[0],
                         presharedKey: parts[1] === "(none)" ? undefined : parts[1],
@@ -60,7 +69,32 @@ export class WireGuardAdapter {
                 }
             }
 
-            return { exists: true, peers };
+            // 2. Try to get MTU from ip link
+            try {
+                const ipOutput = await this.runCommand("ip", ["link", "show", name]);
+                const mtuMatch = ipOutput.match(/mtu\s+(\d+)/);
+                if (mtuMatch) {
+                    interfaceInfo.mtu = parseInt(mtuMatch[1]);
+                }
+            } catch (e) {
+                // Ignore ip link errors
+            }
+
+            // 3. Try to read .conf file for extra metadata
+            try {
+                const confPath = `/etc/wireguard/${name}.conf`;
+                const confContent = await fs.readFile(confPath, "utf-8");
+                interfaceInfo.confPath = confPath;
+                // Basic parsing for DNS/Table if needed
+                const dnsMatch = confContent.match(/DNS\s*=\s*(.+)/);
+                if (dnsMatch) interfaceInfo.dns = dnsMatch[1].trim();
+                const tableMatch = confContent.match(/Table\s*=\s*(.+)/);
+                if (tableMatch) interfaceInfo.table = tableMatch[1].trim();
+            } catch (e) {
+                // Ignore conf file errors
+            }
+
+            return { exists: true, ...interfaceInfo, peers };
         } catch (e: any) {
             const stderr = (e?.stderr as string | undefined) || e?.message || "";
             if (
@@ -70,6 +104,18 @@ export class WireGuardAdapter {
                 return { exists: false, peers: [] };
             }
             throw e;
+        }
+    }
+
+    async getSystemInfo(): Promise<SystemInfo> {
+        try {
+            const [hostname, version] = await Promise.all([
+                this.runCommand("hostname", []).then(s => s.trim()),
+                this.runCommand("wg", ["--version"]).then(s => s.trim())
+            ]);
+            return { hostname, version };
+        } catch (e) {
+            return { hostname: "unknown", version: "unknown" };
         }
     }
 
@@ -86,12 +132,22 @@ export class WireGuardAdapter {
         if (peer.endpoint) {
             args.push("endpoint", peer.endpoint);
         }
-        // Fix: Allow 0 as valid value
         if (peer.persistentKeepalive !== undefined) {
             args.push("persistent-keepalive", peer.persistentKeepalive.toString());
         }
 
-        await this.runCommand("wg", args);
+        if (peer.presharedKey) {
+            const tmpPskFile = `/tmp/wg-psk-${interfaceName}-${peer.publicKey.substring(0, 8)}`;
+            await fs.writeFile(tmpPskFile, peer.presharedKey, { mode: 0o600 });
+            try {
+                args.push("preshared-key", tmpPskFile);
+                await this.runCommand("wg", args);
+            } finally {
+                await fs.unlink(tmpPskFile).catch(() => { });
+            }
+        } else {
+            await this.runCommand("wg", args);
+        }
     }
 
     async removePeer(interfaceName: string, publicKey: string, options?: { ignoreIfMissing?: boolean }) {
@@ -122,6 +178,41 @@ export class WireGuardAdapter {
         // Requires iproute2 package in container
         const state = isUp ? "up" : "down";
         await this.runCommand("ip", ["link", "set", name, state]);
+    }
+
+    async upInterface(name: string, config: { privateKey: string, listenPort: number, address: string }) {
+        // 1. Ensure interface exists
+        const names = await this.listInterfaces();
+        if (!names.includes(name)) {
+            await this.runCommand("ip", ["link", "add", name, "type", "wireguard"]);
+        }
+
+        // 2. Set Config
+        // We use a temporary file for the private key to avoid leaking it in process list
+        // but for simplicity here we use stdin if possible or just args if we must.
+        // Actually, wg set supports stdin: `echo <key> | wg set <name> private-key /dev/stdin`
+        // But since we are using execFile, we can't easily pipe.
+        // We'll use a temporary file.
+        const tmpKeyFile = `/tmp/wg-key-${name}`;
+        await fs.writeFile(tmpKeyFile, config.privateKey, { mode: 0o600 });
+        try {
+            await this.runCommand("wg", ["set", name, "private-key", tmpKeyFile, "listen-port", config.listenPort.toString()]);
+        } finally {
+            await fs.unlink(tmpKeyFile).catch(() => { });
+        }
+
+        // 3. Set IP Address
+        // Remove existing IPs first or just add? Usually we want to stay clean.
+        // ip addr show <name> | grep inet
+        // This is getting complex, let's just add it and ignore error if exists.
+        try {
+            await this.runCommand("ip", ["addr", "add", config.address, "dev", name]);
+        } catch (e: any) {
+            if (!e.message.includes("File exists")) throw e;
+        }
+
+        // 4. Bring UP
+        await this.toggleInterface(name, true);
     }
 
     async listInterfaces(): Promise<string[]> {

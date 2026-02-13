@@ -8,6 +8,8 @@ export type NodeInput = {
   presharedKey?: string;
   endpoint: string;
   listenPort: number;
+  sshUser?: string;
+  sshPort?: number;
 };
 
 export type ClientInput = {

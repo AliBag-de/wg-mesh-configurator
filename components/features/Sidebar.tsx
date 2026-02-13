@@ -25,6 +25,8 @@ interface SidebarProps {
     busy: boolean;
     fillGeneratedKeys: () => void;
     handleSubmit: () => void;
+    handleDeploy?: () => void;
+    handleRemoteDeploy?: () => void;
     resetForm: () => void;
     className?: string;
 }
@@ -43,6 +45,8 @@ export function Sidebar({
     busy,
     fillGeneratedKeys,
     handleSubmit,
+    handleDeploy,
+    handleRemoteDeploy,
     resetForm,
     className,
 }: SidebarProps) {
@@ -217,6 +221,31 @@ export function Sidebar({
                     <Download className="mr-2 h-4 w-4" />
                     {busy ? "Downloading..." : "Download (.zip)"}
                 </Button>
+
+                {handleRemoteDeploy && (
+                    <Button
+                        variant="default"
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20"
+                        size="sm"
+                        onClick={handleRemoteDeploy}
+                        disabled={busy}
+                    >
+                        <Server className="mr-2 h-4 w-4" />
+                        {busy ? "Deploying..." : "Deploy to Remote"}
+                    </Button>
+                )}
+                {handleDeploy && (
+                    <Button
+                        variant="default"
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-500/20"
+                        size="sm"
+                        onClick={handleDeploy}
+                        disabled={busy}
+                    >
+                        <Zap className="mr-2 h-4 w-4" />
+                        {busy ? "Deploying..." : "Activate on Host"}
+                    </Button>
+                )}
                 <Button
                     variant="ghost"
                     className="w-full text-muted-foreground hover:text-destructive text-xs h-8"

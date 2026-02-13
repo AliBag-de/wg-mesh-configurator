@@ -150,11 +150,11 @@ export default function ProvisioningPage() {
 
     return (
         <DashboardLayout sidebarProps={sidebarProps}>
-            <div className="h-full flex flex-col">
+            <div className="flex-1 flex flex-col min-h-0">
                 <div className="flex items-center justify-between mb-4 shrink-0">
                     <h2 className="text-2xl font-bold tracking-tight">Provisioning Dashboard</h2>
                 </div>
-                <div className="flex-1 min-h-0 overflow-hidden">
+                <div className="flex-1 min-h-0">
                     <ProvisioningPanel />
                 </div>
             </div>

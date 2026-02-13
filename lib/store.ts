@@ -43,7 +43,9 @@ const defaultNode = (index: number): NodeInput => ({
   publicKey: "",
   presharedKey: "",
   endpoint: "",
-  listenPort: 51820
+  listenPort: 51820,
+  sshUser: "root",
+  sshPort: 22
 });
 
 const defaultClient = (index: number): ClientInput => ({
