@@ -1,4 +1,4 @@
-
+version: "3.8"
 
 services:
   wg-manager:
@@ -17,6 +17,7 @@ services:
       - HOSTNAME=127.0.0.1
       - PORT=3000
     volumes:
+      - ./data:/app/data
       # Optional: Persist local storage if needed, though app is mostly stateless/browser-based
       # except for the read-only view of wg interfaces.
       # If you want to allow the app to READ config files (optional future feature):

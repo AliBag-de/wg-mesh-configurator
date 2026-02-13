@@ -117,8 +117,6 @@ export function NodeList({
                                             />
                                         </div>
 
-                                        )}
-
                                         <div className="space-y-2 sm:col-span-2 pt-2">
                                             <div className="flex items-center gap-2 text-xs font-medium text-primary">
                                                 <Terminal className="h-3 w-3" />
