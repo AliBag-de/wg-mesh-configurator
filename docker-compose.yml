@@ -20,5 +20,5 @@ services:
       # Optional: Persist local storage if needed, though app is mostly stateless/browser-based
       # except for the read-only view of wg interfaces.
       # If you want to allow the app to READ config files (optional future feature):
-      # - /etc/wireguard:/etc/wireguard:ro
+      - /etc/wireguard:/etc/wireguard:ro
       - ./public:/app/public

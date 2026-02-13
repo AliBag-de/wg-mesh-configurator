@@ -123,4 +123,14 @@ export class WireGuardAdapter {
         const state = isUp ? "up" : "down";
         await this.runCommand("ip", ["link", "set", name, state]);
     }
+
+    async listInterfaces(): Promise<string[]> {
+        try {
+            const output = await this.runCommand("wg", ["show", "interfaces"]);
+            return output.trim().split(/\s+/).filter(Boolean);
+        } catch (error) {
+            // If no interfaces or wg fails, return empty
+            return [];
+        }
+    }
 }

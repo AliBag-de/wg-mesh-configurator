@@ -49,14 +49,35 @@ function getPeersForInterface(state: PersistedState, interfaceName: string): Pee
 
 export async function listInterfaces() {
   const state = await stateManager.load();
-  return Object.keys(state.interfaces).map(name => {
+  const discoveredNames = await wgAdapter.listInterfaces();
+
+  const allNames = new Set([
+    ...Object.keys(state.interfaces),
+    ...discoveredNames
+  ]);
+
+  return Array.from(allNames).map(name => {
     const iface = state.interfaces[name];
     const peerCount = getPeersForInterface(state, name).length;
+
+    // If interface exists in state, use its properties
+    // Otherwise, it's a discovered host interface not yet managed by mesh state
+    if (iface) {
+      return {
+        name,
+        isUp: iface.isUp,
+        listenPort: iface.listenPort,
+        peerCount,
+        lastSyncAt: state.updatedAt
+      };
+    }
+
+    // Default values for discovered interfaces
     return {
       name,
-      isUp: iface.isUp,
-      listenPort: iface.listenPort,
-      peerCount,
+      isUp: true, // If 'wg show' sees it, it's at least configured
+      listenPort: 0,
+      peerCount: 0, // We'll find peers when we click it
       lastSyncAt: state.updatedAt
     };
   });
@@ -64,11 +85,25 @@ export async function listInterfaces() {
 
 export async function getInterfaceDetails(name: string) {
   const state = await stateManager.load();
-  const iface = state.interfaces[name];
+  let iface = state.interfaces[name];
 
-  if (!iface) throw new Error("Interface not found");
+  // If not in state, try to get it from runtime
+  const runtimeData = await wgAdapter.getInterface(name);
+  if (!runtimeData.exists && !iface) {
+    throw new Error("Interface not found");
+  }
 
-  const { peers: runtimePeers } = await wgAdapter.getInterface(name);
+  // If it exists in runtime but not in state, create a synthetic state entry
+  if (!iface) {
+    iface = {
+      listenPort: 0, // We don't know it easily from dump without more parsing
+      addressCidr: "unknown/24",
+      revision: 0,
+      isUp: true
+    };
+  }
+
+  const { peers: runtimePeers } = runtimeData;
   const runtimeMap = new Map(runtimePeers.map(p => [p.publicKey, p]));
 
   const peers = getPeersForInterface(state, name).map((peer) => {
