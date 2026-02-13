@@ -1,67 +1,70 @@
-# Güvenlik ve Performans Analizi Raporu
+# Security and Performance Analysis Report
 
-Bu rapor, `wg-mesh-config` projesi üzerinde yapılan inceleme sonucunda tespit edilen güvenlik ve performans sorunlarını içermektedir.
+This report contains security and performance issues identified as a result of the review conducted on the `wg-mesh-config` project.
 
-## 🛡️ Güvenlik Sorunları (Security Issues)
+## 🛡️ Security Issues
 
-### 1. Deterministik PSK Üretimi (Kritik)
-- **Dosya:** `lib/psk.ts`
-- **Sorun:** WireGuard Pre-Shared Key (PSK) üretimi, sadece node isimlerine ve sabit bir "seed" değerine (`wg-mesh-psk::...`) dayanmaktadır.
-- **Risk:** Node isimlerini bilen bir saldırgan, tüm ağın PSK'larını kolayca hesaplayabilir. Bu durum, PSK'nın sağladığı ek güvenlik katmanını (Quantum Resistance) tamamen etkisiz hale getirir.
-- **Öneri:** PSK üretimi için kriptografik olarak güvenli rastgele sayı üreteci (CSPRNG) kullanılmalı ve her çift için benzersiz olmalıdır.
+### 1. Deterministic PSK Generation (Critical)
+- **File:** `lib/psk.ts`
+- **Issue:** WireGuard Pre-Shared Key (PSK) generation relies solely on node names and a fixed “seed” value (`wg-mesh-psk::...`).
+- **Risk:** An attacker who knows the node names can easily calculate all PSKs for the network. This completely nullifies the additional security layer (Quantum Resistance) provided by the PSK.
+- **Recommendation:** A cryptographically secure random number generator (CSPRNG) should be used for PSK generation, and it must be unique for each pair.
 
-### 2. Korumasız API Endpoint (Yüksek)
-- **Dosya:** `app/api/generate/route.ts`
-- **Sorun:** `/api/generate` endpoint'i üzerinde herhangi bir kimlik doğrulama (Authentication), yetkilendirme (Authorization) veya hız sınırlaması (Rate Limiting) bulunmamaktadır.
-- **Risk:** Yetkisiz kişiler API'yi kullanarak sunucuyu yorabilir (DoS) veya ağ konfigürasyonları üretebilir.
-- **Öneri:** Endpoint'e authentication eklenmeli ve `express-rate-limit` gibi bir middleware ile istek sayısı sınırlandırılmalıdır.
+### 2. Unprotected API Endpoint (High)
+- **File:** `app/api/generate/route.ts`
+- **Issue:** There is no authentication, authorization, or rate limiting on the `/api/generate` endpoint.
+- **Risk:** Unauthorized individuals can use the API to overload the server (DoS) or generate network configurations.
+- **Recommendation:** Authentication should be added to the endpoint, and the number of requests should be limited using middleware such as `express-rate-limit`.
 
-### 3. Input Validasyon Eksikliği (Orta)
-- **Dosya:** `app/api/generate/route.ts`
-- **Sorun:** Gelen istek gövdesi (body) doğrudan `GeneratePayload` tipine dönüştürülmektedir. `zod` kütüphanesi projede bulunmasına rağmen, bu endpoint'te runtime validasyonu yapılmamaktadır.
-- **Risk:** Hatalı veya kötü niyetli veri (örneğin çok büyük sayılar, eksik alanlar) uygulamanın çökmesine veya beklenmedik davranışlara yol açabilir.
-- **Öneri:** `zod` şemaları kullanılarak gelen veri doğrulanmalıdır.
+### 3. Lack of Input Validation (Medium)
+- **File:** `app/api/generate/route.ts`
+- **Issue:** The incoming request body is directly converted to the `GeneratePayload` type. Although the `zod` library is present in the project, runtime validation is not performed on this endpoint.
+- **Risk:** Incorrect or malicious data (e.g., very large numbers, missing fields) could cause the application to crash or behave unexpectedly.
+- **Recommendation:** Incoming data should be validated using `zod` schemas.
 
-### 4. Docker Güvenlik Yapılandırması (Orta)
-- **Dosya:** `Dockerfile`, `docker-compose.yml`
-- **Sorunlar:**
-    - Container varsayılan olarak `root` kullanıcısı ile çalışmaktadır.
-    - `.dockerignore` dosyası eksik olduğu için `node_modules`, `.git` ve `.env` gibi gereksiz/hassas dosyalar image içine kopyalanmaktadır.
-    - `network_mode: host` ve `CAP_NET_ADMIN` yetkileri container'a çok geniş erişim sağlamaktadır.
-    - `/etc/wireguard` dizini container içine mount edilmiştir.
-- **Risk:** Container ele geçirilirse, saldırgan host sistemi üzerinde geniş yetkilere sahip olabilir ve WireGuard anahtarlarına erişebilir.
-- **Öneri:** Mümkünse root olmayan bir kullanıcı (örneğin `node`) kullanılmalı ve `.dockerignore` eklenmelidir.
+### 4. Docker Security Configuration (Medium)
+- **File:** `Dockerfile`, `docker-compose.yml`
+- **Issues:**
+- The container runs as the `root` user by default.
+    - Because the `.dockerignore` file is missing, unnecessary/sensitive files such as `node_modules`, `.git`, and `.env` are copied into the image.
+- `network_mode: host` and `CAP_NET_ADMIN` permissions grant the container very broad access.
+    - The `/etc/wireguard` directory is mounted inside the container.
+- **Risk:** If the container is compromised, an attacker could gain extensive privileges on the host system and access WireGuard keys.
+- **Recommendation:** If possible, use a non-root user (e.g., `node`) and add a `.dockerignore` file.
 
-### 5. Şüpheli Bağımlılık Sürümleri (Düşük)
-- **Dosya:** `package.json`
-- **Sorun:** `zod` sürümü `^4.3.6` ve `tailwindcss` sürümü `^4.x` olarak belirtilmiştir. Standart sürümlerden farklıdır.
-- **Risk:** Kararlılık sorunları veya beklenmedik buglar oluşabilir.
+### 5. Suspicious Dependency Versions (Low)
+- **File:** `package.json`
+- **Issue:** The `zod` version is specified as `^4.3.6` and the `tailwindcss` version as `^4.x`. These differ from the standard versions.
+- **Risk:** Stability issues or unexpected bugs may occur.
 
 ---
 
-## 🚀 Performans Sorunları (Performance Issues)
+## 🚀 Performance Issues
 
-### 1. Senkron Bloklayan İşlemler (Kritik)
-- **Dosya:** `app/api/generate/route.ts`, `lib/generate.ts`
-- **Sorun:** Anahtar üretimi (`x25519`) ve ZIP sıkıştırma işlemleri, Node.js ana thread'i üzerinde senkron (blocking) olarak çalışmaktadır.
-- **Risk:** Bu işlem sırasında sunucu diğer isteklere cevap veremez (Event Loop Blocking). Yoğun kullanımda sunucu kilitlenir.
-- **Öneri:** Bu işlemler Worker Thread'lere taşınmalı veya asenkron versiyonları kullanılmalıdır.
+### 1. Synchronous Blocking Operations (Critical)
+- **File:** `app/api/generate/route.ts`, `lib/generate.ts`
+- **Issue:** Key generation (`x25519`) and ZIP compression operations run synchronously (blocking) on the Node.js main thread.
+- **Risk:** During this operation, the server cannot respond to other requests (Event Loop Blocking). The server locks up during heavy usage.
+- **Recommendation:** These operations should be moved to Worker Threads or asynchronous versions should be used.
 
-### 2. Sınırsız Payload (Yüksek)
-- **Dosya:** `app/api/generate/route.ts`
-- **Sorun:** API'ye gönderilen node/client sayısında bir üst sınır yoktur.
-- **Risk:** Büyük bir payload (örneğin 10.000 node) sunucuda bellek taşmasına (Out-Of-Memory) neden olabilir.
-- **Öneri:** Maksimum node/client sayısı sınırlandırılmalıdır.
+### 2. Unlimited Payload (High)
+- **File:** `app/api/generate/route.ts`
+- **Issue:** There is no upper limit on the number of nodes/clients sent to the API.
+- **Risk:** A large payload (e.g., 10,000 nodes) can cause the server to run out of memory (Out-Of-Memory).
+- **Recommendation:** The maximum number of nodes/clients should be limited.
 
-### 3. Client-Side Render Performansı (Orta)
-- **Dosya:** `components/features/TopologyView.tsx`, `NodeTable.tsx`
-- **Sorun:**
-    - `TopologyView`: SVG ve `framer-motion` animasyonları büyük ağlarda (100+ node) tarayıcıyı yavaşlatacaktır.
-    - `NodeTable`: Her klavye girişinde tüm tablo yeniden render edilmektedir. Sanallaştırma (virtualization) yoktur.
-- **Risk:** Kullanıcı deneyimi büyük ağlarda ciddi şekilde düşecektir.
-- **Öneri:** `react-window` gibi kütüphanelerle sanallaştırma yapılmalı ve `memo` kullanılarak gereksiz renderlar önlenmelidir.
+### 3. Client-Side Render Performance (Medium)
+- **File:** `components/features/TopologyView.tsx`, `NodeTable.tsx`
+- **Issue:**
+    - `TopologyView`: SVG and `framer-motion` animations will slow down the browser on large networks (100+ nodes).
+    - `NodeTable`: The entire table is re-rendered on every keyboard input. There is no virtualization.
+- **Risk:** User experience will be significantly degraded on large networks.
+- **Recommendation:** Virtualization should be implemented using libraries such as `react-window`, and unnecessary renders should be prevented using `memo`.
 
-### 4. LocalStorage Senkron Yazma (Düşük)
-- **Dosya:** `lib/store.ts`
-- **Sorun:** `zustand` persist middleware'i her state değişiminde senkron olarak `localStorage`'a yazmaktadır.
-- **Risk:** Büyük veri setlerinde arayüzde takılmalara (jank) neden olabilir.
+### 4. LocalStorage Synchronous Writing (Low)
+- **File:** `lib/store.ts`
+- **Issue:** The `zustand` persist middleware writes synchronously to `localStorage` on every state change.
+- **Risk:** May cause jank in the interface with large data sets.
+
+
+Translated with DeepL.com (free version)
