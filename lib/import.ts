@@ -1,5 +1,16 @@
 import { NodeInput, ClientInput } from "./types";
 
+function uuidv4() {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+        return crypto.randomUUID();
+    }
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === "x" ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+    });
+}
+
 interface ParsedConfig {
     interface?: {
         privateKey?: string;
@@ -111,7 +122,7 @@ export function convertConfigToMesh(
 
         if (!existingNode) {
             newNodes.push({
-                id: crypto.randomUUID(),
+                id: uuidv4(),
                 name: `Imported Node ${currentNodes.length + newNodes.length + 1}`,
                 privateKey: config.interface.privateKey,
                 publicKey: "", // Derived later or unknown
@@ -157,7 +168,7 @@ export function convertConfigToMesh(
                 }
 
                 newNodes.push({
-                    id: crypto.randomUUID(),
+                    id: uuidv4(),
                     name: peer.name || `Peer Node ${newNodes.length + i + 1}`,
                     publicKey: peer.publicKey,
                     presharedKey: peer.presharedKey || "",
@@ -171,7 +182,7 @@ export function convertConfigToMesh(
             // It's a Client
             if (!isClientDuplicate(peer.publicKey)) {
                 newClients.push({
-                    id: crypto.randomUUID(),
+                    id: uuidv4(),
                     name: peer.name || `Imported Client ${newClients.length + i + 1}`,
                     publicKey: peer.publicKey,
                     presharedKey: peer.presharedKey || "",

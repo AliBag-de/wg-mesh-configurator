@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NodeInput } from "@/lib/types";
-import { Key, Plus, Server, Trash2, Zap } from "lucide-react";
+import { Key, Plus, Server, Trash2, Zap, Terminal } from "lucide-react";
 import { EndpointVersion } from "@/lib/types";
 
 interface NodeListProps {
@@ -117,28 +117,34 @@ export function NodeList({
                                             />
                                         </div>
 
-                                        {!autoGenerateKeys && (
-                                            <>
-                                                <div className="space-y-1.5 sm:col-span-2">
-                                                    <Label className="text-xs text-muted-foreground">Private Key</Label>
-                                                    <Input
-                                                        value={node.privateKey ?? ""}
-                                                        onChange={(e) => updateNode(node.id, { privateKey: e.target.value })}
-                                                        placeholder="Base64 Private Key..."
-                                                        className="h-8 font-mono text-xs bg-muted/30"
-                                                    />
-                                                </div>
-                                                <div className="space-y-1.5 sm:col-span-2">
-                                                    <Label className="text-xs text-muted-foreground">Public Key</Label>
-                                                    <Input
-                                                        value={node.publicKey}
-                                                        onChange={(e) => updateNode(node.id, { publicKey: e.target.value })}
-                                                        placeholder="Base64 Public Key..."
-                                                        className="h-8 font-mono text-xs bg-muted/30"
-                                                    />
-                                                </div>
-                                            </>
                                         )}
+
+                                        <div className="space-y-2 sm:col-span-2 pt-2">
+                                            <div className="flex items-center gap-2 text-xs font-medium text-primary">
+                                                <Terminal className="h-3 w-3" />
+                                                SSH Dağıtım Ayarları
+                                            </div>
+                                            <div className="grid gap-3 sm:grid-cols-2">
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-xs text-muted-foreground">SSH Kullanıcı</Label>
+                                                    <Input
+                                                        value={node.sshUser || ""}
+                                                        onChange={(e) => updateNode(node.id, { sshUser: e.target.value })}
+                                                        placeholder="root"
+                                                        className="h-8 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-xs text-muted-foreground">SSH Port</Label>
+                                                    <Input
+                                                        type="number"
+                                                        value={node.sshPort || 22}
+                                                        onChange={(e) => updateNode(node.id, { sshPort: Number(e.target.value) })}
+                                                        className="h-8 font-mono text-xs"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>

@@ -18,6 +18,7 @@ interface SummarySidebarProps {
     busy: boolean;
     fillGeneratedKeys: () => void;
     handleSubmit: () => void;
+    handleDeploy: () => void;
     resetForm: () => void;
 }
 
@@ -35,6 +36,7 @@ export function SummarySidebar({
     busy,
     fillGeneratedKeys,
     handleSubmit,
+    handleDeploy,
     resetForm,
 }: SummarySidebarProps) {
     return (
@@ -143,6 +145,16 @@ export function SummarySidebar({
                     >
                         <Download className="mr-2 h-4 w-4" />
                         {busy ? "İndiriliyor..." : "Konfigleri İndir"}
+                    </Button>
+                    <Button
+                        variant="default"
+                        className="w-full bg-green-600 hover:bg-green-700 text-white"
+                        size="lg"
+                        onClick={handleDeploy}
+                        disabled={busy}
+                    >
+                        <Zap className="mr-2 h-4 w-4" />
+                        {busy ? "Uygulanıyor..." : "Bu Sunucuya Kur"}
                     </Button>
                     <Button
                         variant="ghost"
