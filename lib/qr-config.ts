@@ -15,6 +15,7 @@ export function generateClientConfig(
     networkCidr: string,
     endpointVersion: EndpointVersion,
     persistentKeepalive: number,
+    mtu: number | undefined,
     presharedKeys: Record<string, string> // Map of GatewayName -> PSK
 ): string {
 
@@ -23,6 +24,10 @@ export function generateClientConfig(
         `Address = ${clientIp}/32`,
         `PrivateKey = ${client.privateKey}`
     ];
+
+    if (mtu) {
+        lines.push(`MTU = ${mtu}`);
+    }
 
     gatewayNodes.forEach(gateway => {
         const psk = presharedKeys[gateway.name];

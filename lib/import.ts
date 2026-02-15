@@ -1,4 +1,13 @@
 import { NodeInput, ClientInput } from "./types";
+import { x25519 } from "@noble/curves/ed25519";
+
+function toBase64(arr: Uint8Array) {
+    return btoa(String.fromCharCode(...arr));
+}
+
+function fromBase64(str: string) {
+    return Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
+}
 
 function uuidv4() {
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -16,6 +25,8 @@ interface ParsedConfig {
         privateKey?: string;
         listenPort?: number;
         address?: string;
+        name?: string;
+        mtu?: number;
     };
     peers: {
         publicKey?: string;
@@ -53,7 +64,10 @@ export function parseWgConfig(text: string): ParsedConfig {
         if (trimmed.toLowerCase() === "[interface]") {
             currentSection = "Interface";
             if (!result.interface) result.interface = {};
-            lastComment = null; // Interface doesn't use it for now
+            if (lastComment) {
+                result.interface.name = lastComment;
+                lastComment = null;
+            }
             continue;
         }
 
@@ -86,6 +100,7 @@ export function parseWgConfig(text: string): ParsedConfig {
             if (cleanKey === "privatekey") result.interface.privateKey = value;
             else if (cleanKey === "listenport") result.interface.listenPort = parseInt(value, 10);
             else if (cleanKey === "address") result.interface.address = value;
+            else if (cleanKey === "mtu") result.interface.mtu = parseInt(value, 10);
         } else if (currentSection === "Peer" && currentPeer) {
             if (cleanKey === "publickey") currentPeer.publicKey = value;
             else if (cleanKey === "presharedkey") currentPeer.presharedKey = value;
@@ -116,20 +131,34 @@ export function convertConfigToMesh(
     const isClientDuplicate = (pk: string) => currentClients.some(c => c.publicKey === pk) || importedPublicKeys.has(pk);
 
     // 1. Convert Interface to a Node
-    if (config.interface && config.interface.address) {
-        const ip = config.interface.address.split("/")[0];
+    if (config.interface) {
+        const ip = config.interface.address?.split("/")[0] || "";
         const existingNode = currentNodes.find(n => n.privateKey === config.interface?.privateKey);
 
         if (!existingNode) {
-            newNodes.push({
+            let derivedPubKey = "";
+            if (config.interface.privateKey) {
+                try {
+                    const priv = fromBase64(config.interface.privateKey);
+                    const pub = x25519.getPublicKey(priv);
+                    derivedPubKey = toBase64(pub);
+                } catch (e) {
+                    console.error("Failed to derive public key from imported private key", e);
+                }
+            }
+
+            const newNode: NodeInput = {
                 id: uuidv4(),
-                name: `Imported Node ${currentNodes.length + newNodes.length + 1}`,
+                name: config.interface.name || `Main Server (${currentNodes.length + newNodes.length + 1})`,
                 privateKey: config.interface.privateKey,
-                publicKey: "", // Derived later or unknown
-                presharedKey: "", // Interface usually doesn't have PSK itself
+                publicKey: derivedPubKey,
+                presharedKey: "",
                 listenPort: config.interface.listenPort || 51820,
-                endpoint: ip
-            });
+                endpoint: ip,
+                wgIp: ip
+            };
+            newNodes.push(newNode);
+            if (derivedPubKey) importedPublicKeys.add(derivedPubKey);
         }
     }
 
@@ -172,9 +201,9 @@ export function convertConfigToMesh(
                     name: peer.name || `Peer Node ${newNodes.length + i + 1}`,
                     publicKey: peer.publicKey,
                     presharedKey: peer.presharedKey || "",
-                    privateKey: "",
                     endpoint: host,
-                    listenPort: parseInt(port, 10) || 51820
+                    listenPort: parseInt(port, 10) || 51820,
+                    wgIp: peer.allowedIPs?.split(",")[0]?.split("/")[0]?.trim() || ""
                 });
                 importedPublicKeys.add(peer.publicKey);
             }
@@ -186,7 +215,8 @@ export function convertConfigToMesh(
                     name: peer.name || `Imported Client ${newClients.length + i + 1}`,
                     publicKey: peer.publicKey,
                     presharedKey: peer.presharedKey || "",
-                    privateKey: ""
+                    privateKey: "",
+                    wgIp: peer.allowedIPs?.split(",")[0]?.split("/")[0]?.trim() || ""
                 });
                 importedPublicKeys.add(peer.publicKey);
             }

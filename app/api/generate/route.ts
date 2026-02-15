@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     return new Response(body, {
       headers: {
         "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${filename}"`
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`
       }
     });
   } catch (error) {

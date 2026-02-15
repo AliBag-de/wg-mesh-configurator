@@ -14,6 +14,7 @@ type MeshState = {
   clients: ClientInput[];
   gatewayNodeNames: string[];
   gatewayTouched: boolean;
+  mtu: number;
   setNetworkCidr: (value: string) => void;
   setEndpointVersion: (value: EndpointVersion) => void;
   setInterfaceName: (value: string) => void;
@@ -29,6 +30,7 @@ type MeshState = {
     value: string[] | ((prev: string[]) => string[])
   ) => void;
   setGatewayTouched: (value: boolean) => void;
+  setMtu: (value: number) => void;
   resetAll: () => void;
 };
 
@@ -66,7 +68,8 @@ const defaultState = () => ({
   nodes: [defaultNode(0), defaultNode(1), defaultNode(2)],
   clients: [defaultClient(0), defaultClient(1), defaultClient(2)],
   gatewayNodeNames: [],
-  gatewayTouched: false
+  gatewayTouched: false,
+  mtu: 1420
 });
 
 export const useMeshStore = create<MeshState>()(
@@ -94,6 +97,7 @@ export const useMeshStore = create<MeshState>()(
             typeof value === "function" ? value(state.gatewayNodeNames) : value
         })),
       setGatewayTouched: (value) => set({ gatewayTouched: value }),
+      setMtu: (value) => set({ mtu: value }),
       resetAll: () => set(defaultState())
     }),
     {
@@ -103,7 +107,8 @@ export const useMeshStore = create<MeshState>()(
         nodes: state.nodes,
         clients: state.clients,
         gatewayNodeNames: state.gatewayNodeNames,
-        gatewayTouched: state.gatewayTouched
+        gatewayTouched: state.gatewayTouched,
+        mtu: state.mtu
       })
     }
   )

@@ -21,6 +21,8 @@ interface NetworkSettingsProps {
     setEnableBabel: (val: boolean) => void;
     autoGenerateKeys: boolean;
     setAutoGenerateKeys: (val: boolean) => void;
+    mtu: number;
+    setMtu: (val: number) => void;
 }
 
 export function NetworkSettings({
@@ -38,6 +40,8 @@ export function NetworkSettings({
     setEnableBabel,
     autoGenerateKeys,
     setAutoGenerateKeys,
+    mtu,
+    setMtu,
 }: NetworkSettingsProps) {
     return (
         <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
@@ -49,7 +53,7 @@ export function NetworkSettings({
             </CardHeader>
             <CardContent className="p-4 grid gap-4">
                 {/* Top Row: Inputs */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                     <div className="space-y-1">
                         <Label htmlFor="cidr" className="text-xs text-muted-foreground">IPv4 CIDR</Label>
                         <Input
@@ -91,6 +95,17 @@ export function NetworkSettings({
                             min={0}
                             value={persistentKeepalive}
                             onChange={(e) => setPersistentKeepalive(Number(e.target.value))}
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <Label htmlFor="mtu" className="text-xs text-muted-foreground">MTU Size</Label>
+                        <Input
+                            id="mtu"
+                            className="h-8 text-xs font-mono"
+                            type="number"
+                            min={0}
+                            value={mtu}
+                            onChange={(e) => setMtu(Number(e.target.value))}
                         />
                     </div>
                 </div>

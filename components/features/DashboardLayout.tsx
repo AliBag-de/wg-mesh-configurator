@@ -17,8 +17,8 @@ export function DashboardLayout({ children, sidebarProps }: DashboardLayoutProps
     return (
         <div className="flex min-h-screen bg-background text-foreground overflow-hidden">
             {/* Desktop Sidebar */}
-            <div className="hidden lg:block w-72 shrink-0 border-r">
-                <Sidebar {...sidebarProps} className="fixed w-72 h-full top-0 left-0" />
+            <div className="hidden lg:block lg:w-64 xl:w-72 shrink-0 border-r">
+                <Sidebar {...sidebarProps} className="fixed lg:w-64 xl:w-72 h-full top-0 left-0" />
             </div>
 
             {/* Mobile Sidebar Overlay */}

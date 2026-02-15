@@ -27,12 +27,15 @@ function safeName(name: string) {
   return name.trim().replace(/[^a-zA-Z0-9_-]+/g, "_");
 }
 
-function neighborIndexes(index: number, count: number): number[] {
+export function neighborIndexes(index: number, count: number): number[] {
   if (count <= 1) return [];
   if (count === 2) return [index === 0 ? 1 : 0];
   if (count === 3) return [0, 1, 2].filter((i) => i !== index);
 
-  const offsets = count < 6 ? [1] : [1, 3];
+  const offsets = new Set<number>([1]);
+  if (count >= 6) offsets.add(3);
+  if (count >= 10) offsets.add(Math.floor(count / 2));
+
   const neighbors = new Set<number>();
   for (const offset of offsets) {
     neighbors.add((index + offset) % count);
@@ -111,8 +114,8 @@ export function resolveMeshState(payload: GeneratePayload) {
     ensure(nodeMap.has(name), `Gateway node bulunamadi: ${name}`);
   });
 
-  const nodeIps = nodes.map((_, i) => intToIp(serverStart + i));
-  const clientIps = clients.map((_, i) => intToIp(clientStart + i));
+  const nodeIps = nodes.map((node, i) => node.wgIp || intToIp(serverStart + i));
+  const clientIps = clients.map((client, i) => client.wgIp || intToIp(clientStart + i));
 
   const resolvedNodes = nodes.map((node, i) => {
     let res = { ...node, address: `${nodeIps[i]}/32` };
@@ -157,6 +160,8 @@ export function generateNodeConfig(
     persistentKeepalive: number;
     includeIpForwarding: boolean;
     gatewayNodeNames: string[];
+    mtu?: number;
+    enableBabel?: boolean;
   },
   pskGetter: (a: string, b: string) => string
 ): string {
@@ -168,16 +173,25 @@ export function generateNodeConfig(
   const neighbors = neighborIndexes(nodeIndex, resolvedNodes.length);
 
   const lines: string[] = [
+    `# ${nodeName}`,
     "[Interface]",
     `Address = ${nodeIp}/32`,
     `ListenPort = ${node.listenPort}`,
     `PrivateKey = ${node.privateKey}`
   ];
 
+  if (config.mtu) {
+    lines.push(`MTU = ${config.mtu}`);
+  }
+
   if (config.includeIpForwarding) {
     lines.push(
       "PostUp = sysctl -w net.ipv4.ip_forward=1",
-      "PostDown = sysctl -w net.ipv4.ip_forward=0"
+      "PostUp = iptables -A FORWARD -i %i -j ACCEPT",
+      "PostUp = iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE",
+      "PostDown = sysctl -w net.ipv4.ip_forward=0",
+      "PostDown = iptables -D FORWARD -i %i -j ACCEPT",
+      "PostDown = iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE"
     );
   }
 
@@ -185,13 +199,18 @@ export function generateNodeConfig(
     const peer = resolvedNodes[neighborIndex];
     const peerIp = nodeIps[neighborIndex];
     const psk = pskGetter(node.name, peer.name);
+
+    // We restrict AllowedIPs to the specific peer IP for maximum performance 
+    // and cryptokey routing integrity in the mesh.
+    const allowedIps = `${peerIp}/32`;
+
     lines.push(
       "",
       `# ${peer.name}`,
       "[Peer]",
       `PublicKey = ${peer.publicKey}`,
       `PresharedKey = ${psk}`,
-      `AllowedIPs = ${peerIp}/32`,
+      `AllowedIPs = ${allowedIps}`,
       `Endpoint = ${formatEndpoint(peer.endpoint, config.endpointVersion, peer.listenPort)}`,
       `PersistentKeepalive = ${config.persistentKeepalive}`
     );
@@ -276,14 +295,22 @@ export async function generateZip(payload: GeneratePayload) {
         endpointVersion,
         persistentKeepalive,
         includeIpForwarding,
-        gatewayNodeNames
+        gatewayNodeNames,
+        mtu: p.mtu,
+        enableBabel: enableBabel
       },
       getPsk
     );
 
     if (enableBabel) {
       const babelConfig = [
-        `interface ${interfaceName}`,
+        `interface ${interfaceName} type tunnel`,
+        "hello-interval 1",
+        "update-interval 4",
+        "rtt-cost 256",
+        "rtt-min 10",
+        "rtt-max 120",
+        "",
         "redistribute local",
         `redistribute ip ${networkCidr}`
       ].join("\n");
@@ -291,6 +318,38 @@ export async function generateZip(payload: GeneratePayload) {
     }
 
     zip.file(`nodes/${safeName(node.name)}/${interfaceFilename}`, nodeConfig);
+
+    // Add setup script for nodes
+    const setupScript = [
+      "#!/bin/bash",
+      "# WG-Mesh Auto-Generated Setup Script",
+      `IFACE="${interfaceName}"`,
+      "CONFIG_DIR=\"/etc/wireguard\"",
+      "",
+      "echo \"[*] Configuring node: ${node.name}\"",
+      "if [ \"$EUID\" -ne 0 ]; then echo \"[!] Please run as root\"; exit 1; fi",
+      "",
+      "echo \"[*] Copying WireGuard config...\"",
+      "cp \"$IFACE.conf\" \"$CONFIG_DIR/\"",
+      "chmod 600 \"$CONFIG_DIR/$IFACE.conf\"",
+      "",
+      enableBabel ? [
+        "if [ -f \"babeld.conf\" ]; then",
+        "  echo \"[*] Setting up Babel routing...\"",
+        "  apt-get update && apt-get install -y babeld > /dev/null",
+        "  cp \"babeld.conf\" /etc/babeld.conf",
+        "  systemctl enable babeld && systemctl restart babeld",
+        "fi"
+      ].join("\n") : "",
+      "",
+      "echo \"[*] Starting WireGuard interface...\"",
+      "wg-quick up \"$IFACE\"",
+      "systemctl enable wg-quick@\"$IFACE\"",
+      "",
+      "echo \"[+] Setup complete!\"",
+    ].filter(Boolean).join("\n");
+
+    zip.file(`nodes/${safeName(node.name)}/setup.sh`, setupScript);
 
     (manifest.nodes as unknown[]).push({
       name: node.name,
@@ -311,6 +370,10 @@ export async function generateZip(payload: GeneratePayload) {
       `Address = ${clientIp}/32`,
       `PrivateKey = ${client.privateKey}`
     ];
+
+    if (p.mtu) {
+      clientLines.push(`MTU = ${p.mtu}`);
+    }
 
     for (const gatewayName of gatewayNodeNames) {
       const gateway = resolvedNodeMap.get(gatewayName);
@@ -349,5 +412,5 @@ export async function generateZip(payload: GeneratePayload) {
   zip.file("manifest.json", JSON.stringify(manifest, null, 2));
 
   const content = await zip.generateAsync({ type: "uint8array" });
-  return { content, filename: "wg-mesh-config.zip" };
+  return { content, filename: `wg-mesh-${safeName(interfaceName)}.zip` };
 }

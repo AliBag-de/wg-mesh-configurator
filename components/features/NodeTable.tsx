@@ -56,6 +56,7 @@ export function NodeTable({
                                 <th className="px-3 py-2 w-10 text-center">#</th>
                                 <th className="px-3 py-2 w-32">Name</th>
                                 <th className="px-3 py-2 w-48">Endpoint</th>
+                                <th className="px-3 py-2 w-32">WG IP</th>
                                 <th className="px-3 py-2 w-24">Port</th>
                                 {!autoGenerateKeys && <th className="px-3 py-2">Keys (Private / Public)</th>}
                                 <th className="px-3 py-2 w-20 text-right">Actions</th>
@@ -109,6 +110,14 @@ export function NodeTable({
                                                         </span>
                                                     )}
                                                 </div>
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <Input
+                                                    value={node.wgIp ?? ""}
+                                                    onChange={(e) => updateNode(node.id, { wgIp: e.target.value })}
+                                                    placeholder={`10.20.0.${index + 1}`}
+                                                    className="h-7 text-xs font-mono px-2 bg-background/50 border-transparent focus:border-primary/50 focus:bg-background transition-all"
+                                                />
                                             </td>
                                             <td className="px-3 py-2 w-[100px]">
                                                 <Input

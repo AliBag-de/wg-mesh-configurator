@@ -1,0 +1,28 @@
+{
+  "networkCidr": "10.0.0.0/24",
+  "endpointVersion": "ipv4",
+  "mtu": 1420,
+  "gatewayNodeNames": [
+    "node1"
+  ],
+  "autoGenerateKeys": true,
+  "includeIpForwarding": true,
+  "persistentKeepalive": 25,
+  "enableBabel": true,
+  "interfaceName": "wg-mesh",
+  "nodes": [
+    {
+      "endpoint": "1.1.1.1",
+      "listenPort": 51820,
+      "id": "1",
+      "name": "node1"
+    },
+    {
+      "endpoint": "2.2.2.2",
+      "listenPort": 51820,
+      "id": "2",
+      "name": "node2"
+    }
+  ],
+  "clients": []
+}

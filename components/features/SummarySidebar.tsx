@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Download, Files, RefreshCw, Trash2, Zap } from "lucide-react";
+import { Download, Files, RefreshCw, Trash2, Zap, Globe } from "lucide-react";
 import { EndpointVersion } from "@/lib/types";
 
 interface SummarySidebarProps {
@@ -19,6 +19,7 @@ interface SummarySidebarProps {
     fillGeneratedKeys: () => void;
     handleSubmit: () => void;
     handleDeploy: () => void;
+    handleRemoteDeploy: () => void;
     resetForm: () => void;
 }
 
@@ -37,6 +38,7 @@ export function SummarySidebar({
     fillGeneratedKeys,
     handleSubmit,
     handleDeploy,
+    handleRemoteDeploy,
     resetForm,
 }: SummarySidebarProps) {
     return (
@@ -46,9 +48,9 @@ export function SummarySidebar({
                 <CardHeader className="pb-3 border-b border-border/50">
                     <div className="flex items-center justify-between">
                         <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                            Hızlı Durum
+                            Quick Status
                         </CardTitle>
-                        <Badge variant="secondary" className="text-[10px] px-1.5 h-5">Anlık</Badge>
+                        <Badge variant="secondary" className="text-[10px] px-1.5 h-5">Live</Badge>
                     </div>
                 </CardHeader>
                 <CardContent className="grid gap-4 pt-4">
@@ -84,26 +86,26 @@ export function SummarySidebar({
             <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
                 <CardHeader className="pb-3">
                     <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                        Konfig Özeti
+                        Config Summary
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                     <div className="flex justify-between items-center text-sm">
                         <span className="text-muted-foreground">Auto Key Gen</span>
                         <Badge variant={autoGenerateKeys ? "default" : "outline"} className="text-[10px]">
-                            {autoGenerateKeys ? "AÇIK" : "KAPALI"}
+                            {autoGenerateKeys ? "ON" : "OFF"}
                         </Badge>
                     </div>
                     <div className="flex justify-between items-center text-sm">
                         <span className="text-muted-foreground">IP Fwd</span>
                         <Badge variant={includeIpForwarding ? "default" : "outline"} className="text-[10px]">
-                            {includeIpForwarding ? "AÇIK" : "KAPALI"}
+                            {includeIpForwarding ? "ON" : "OFF"}
                         </Badge>
                     </div>
                     <div className="flex justify-between items-center text-sm">
                         <span className="text-muted-foreground">Babel</span>
                         <Badge variant={enableBabel ? "default" : "outline"} className="text-[10px]">
-                            {enableBabel ? "AÇIK" : "KAPALI"}
+                            {enableBabel ? "ON" : "OFF"}
                         </Badge>
                     </div>
 
@@ -117,7 +119,7 @@ export function SummarySidebar({
                                     </Badge>
                                 ))
                             ) : (
-                                <span className="text-xs text-muted-foreground italic">Seçim yok</span>
+                                <span className="text-xs text-muted-foreground italic">No selection</span>
                             )}
                         </div>
                     </div>
@@ -133,8 +135,8 @@ export function SummarySidebar({
                         onClick={fillGeneratedKeys}
                         disabled={busy}
                     >
-                        <Zap className="mr-2 h-4 w-4" />
-                        {busy ? "İşleniyor..." : "Tümüne Key Üret"}
+                        < Zap className="mr-2 h-4 w-4" />
+                        {busy ? "Processing..." : "Generate All Keys"}
                     </Button>
                     <Button
                         variant="outline"
@@ -144,7 +146,7 @@ export function SummarySidebar({
                         disabled={busy}
                     >
                         <Download className="mr-2 h-4 w-4" />
-                        {busy ? "İndiriliyor..." : "Konfigleri İndir"}
+                        {busy ? "Downloading..." : "Download Configs"}
                     </Button>
                     <Button
                         variant="default"
@@ -154,7 +156,17 @@ export function SummarySidebar({
                         disabled={busy}
                     >
                         <Zap className="mr-2 h-4 w-4" />
-                        {busy ? "Uygulanıyor..." : "Bu Sunucuya Kur"}
+                        {busy ? "Applying..." : "Install on Local Server"}
+                    </Button>
+                    <Button
+                        variant="default"
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                        size="lg"
+                        onClick={handleRemoteDeploy}
+                        disabled={busy}
+                    >
+                        <Globe className="mr-2 h-4 w-4" />
+                        {busy ? "Processing..." : "Install on Remote Server"}
                     </Button>
                     <Button
                         variant="ghost"
@@ -164,7 +176,7 @@ export function SummarySidebar({
                         disabled={busy}
                     >
                         <RefreshCw className="mr-2 h-3 w-3" />
-                        Formu Sıfırla
+                        Reset Form
                     </Button>
                 </CardContent>
             </Card>

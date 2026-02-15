@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { NodeInput, ClientInput } from "@/lib/types";
+import { neighborIndexes } from "@/lib/generate";
 import { colorForKey } from "@/lib/color";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,19 +22,6 @@ export function TopologyView({ nodes, clients, gatewayNodeNames }: TopologyViewP
     const nodeRadius = 220;
     const clientRadius = 320;
 
-    const neighborIndices = (index: number, count: number) => {
-        if (count <= 1) return [];
-        if (count === 2) return [index === 0 ? 1 : 0];
-        if (count === 3) return [0, 1, 2].filter((i) => i !== index);
-        const offsets = count < 6 ? [1] : [1, 3];
-        const neighbors = new Set<number>();
-        offsets.forEach((offset) => {
-            neighbors.add((index + offset) % count);
-            neighbors.add((index - offset + count) % count);
-        });
-        neighbors.delete(index);
-        return Array.from(neighbors);
-    };
 
     const nodePositions = useMemo(() => {
         if (nodes.length === 0) return [];
@@ -53,7 +41,7 @@ export function TopologyView({ nodes, clients, gatewayNodeNames }: TopologyViewP
         const links: Array<{ a: number; b: number }> = [];
         const seen = new Set<string>();
         nodes.forEach((_, i) => {
-            neighborIndices(i, nodes.length).forEach((j) => {
+            neighborIndexes(i, nodes.length).forEach((j) => {
                 const a = Math.min(i, j);
                 const b = Math.max(i, j);
                 const key = `${a}-${b}`;

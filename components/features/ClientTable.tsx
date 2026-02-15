@@ -34,24 +34,24 @@ export function ClientTable({
     autoGenerateKeys,
 }: ClientTableProps) {
     const [qrClient, setQrClient] = useState<{ name: string; config: string } | null>(null);
-    const { nodes, networkCidr, endpointVersion, persistentKeepalive, gatewayNodeNames } = useMeshStore();
+    const { nodes, networkCidr, endpointVersion, persistentKeepalive, gatewayNodeNames, mtu } = useMeshStore();
 
     const handleShowQR = (client: ClientInput) => {
         try {
             const gatewayNodes = nodes.filter(n => gatewayNodeNames.includes(n.name));
             if (gatewayNodes.length === 0) {
-                toast.error("QR için en az bir gateway seçmelisiniz.");
+                toast.error("You must select at least one gateway for QR.");
                 return;
             }
 
             if (!client.privateKey) {
-                toast.error("QR üretmek için client private key gerekli.");
+                toast.error("Client private key is required to generate QR.");
                 return;
             }
 
             const clientIndex = clients.findIndex((c) => c.id === client.id);
             if (clientIndex === -1) {
-                toast.error("Client bulunamadı.");
+                toast.error("Client not found.");
                 return;
             }
 
@@ -67,18 +67,18 @@ export function ClientTable({
                 networkCidr,
                 endpointVersion,
                 persistentKeepalive,
+                mtu,
                 pskMap
             );
 
             setQrClient({ name: client.name, config });
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "QR konfigürü üretilemedi.");
+            toast.error(error instanceof Error ? error.message : "Failed to generate QR configuration.");
         }
     };
 
     return (
         <div className="rounded-lg border bg-card/50 backdrop-blur-sm overflow-hidden mt-6">
-            {/* ... Header ... */}
             <div className="flex items-center justify-between p-3 border-b bg-muted/20">
                 <div className="flex items-center gap-2">
                     <Users className="h-4 w-4 text-blue-400" />
@@ -103,6 +103,7 @@ export function ClientTable({
                             <tr>
                                 <th className="px-3 py-2 w-16 text-center">#</th>
                                 <th className="px-3 py-2 w-32">Name</th>
+                                <th className="px-3 py-2 w-32">WG IP</th>
                                 {!autoGenerateKeys && <th className="px-3 py-2">Keys (Private / Public)</th>}
                                 <th className="px-3 py-2 w-[100px] text-right">Actions</th>
                             </tr>
@@ -141,6 +142,14 @@ export function ClientTable({
                                                         className="h-7 w-full min-w-[120px] text-xs px-2 bg-background/50 border-transparent focus:border-blue-500/50 focus:bg-background transition-all"
                                                     />
                                                 </div>
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <Input
+                                                    value={client.wgIp ?? ""}
+                                                    onChange={(e) => updateClient(client.id, { wgIp: e.target.value })}
+                                                    placeholder={`10.20.0.${index + 101}`}
+                                                    className="h-7 text-xs font-mono px-2 bg-background/50 border-transparent focus:border-blue-500/50 focus:bg-background transition-all"
+                                                />
                                             </td>
                                             {!autoGenerateKeys && (
                                                 <td className="px-3 py-2">
@@ -205,9 +214,8 @@ export function ClientTable({
                             </AnimatePresence>
                         </tbody>
                     </table>
-                )
-                }
-            </div >
+                )}
+            </div>
 
             {qrClient && (
                 <QRCodeDialog
@@ -217,6 +225,6 @@ export function ClientTable({
                     config={qrClient.config}
                 />
             )}
-        </div >
+        </div>
     );
 }

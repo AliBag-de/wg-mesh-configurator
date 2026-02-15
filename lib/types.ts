@@ -10,6 +10,7 @@ export type NodeInput = {
   listenPort: number;
   sshUser?: string;
   sshPort?: number;
+  wgIp?: string;
 };
 
 export type ClientInput = {
@@ -18,6 +19,7 @@ export type ClientInput = {
   publicKey: string;
   privateKey?: string;
   presharedKey?: string;
+  wgIp?: string;
 };
 
 export type GeneratePayload = {
@@ -31,4 +33,5 @@ export type GeneratePayload = {
   nodes: NodeInput[];
   clients: ClientInput[];
   gatewayNodeNames: string[];
+  mtu?: number;
 };
