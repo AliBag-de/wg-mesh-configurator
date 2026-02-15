@@ -10,6 +10,7 @@ export type NodeInput = {
   listenPort: number;
   sshUser?: string;
   sshPort?: number;
+  sshHost?: string;
   wgIp?: string;
 };
 

@@ -20,6 +20,7 @@ interface SummarySidebarProps {
     handleSubmit: () => void;
     handleDeploy: () => void;
     handleRemoteDeploy: () => void;
+    handleRemoteDeploy: () => void;
     resetForm: () => void;
 }
 
@@ -38,6 +39,7 @@ export function SummarySidebar({
     fillGeneratedKeys,
     handleSubmit,
     handleDeploy,
+    handleRemoteDeploy,
     handleRemoteDeploy,
     resetForm,
 }: SummarySidebarProps) {

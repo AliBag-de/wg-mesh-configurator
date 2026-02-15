@@ -238,7 +238,7 @@ export function TopologyView({ nodes, clients, gatewayNodeNames }: TopologyViewP
                                 className="text-[10px] font-bold fill-foreground select-none pointer-events-none opacity-80 uppercase tracking-tight"
                                 style={{ textShadow: "0 0 4px var(--background)" }}
                             >
-                                {node.name.length > 10 ? node.name.slice(0, 8) + ".." : node.name}
+                                {node.name.length > 15 ? node.name.slice(0, 15) + ".." : node.name}
                             </text>
 
                             {/* Details (Visible on Hover) */}
@@ -251,7 +251,7 @@ export function TopologyView({ nodes, clients, gatewayNodeNames }: TopologyViewP
                                         x={node.x - 70}
                                         y={node.y + 32}
                                         width="140"
-                                        height="28"
+                                        height="40"
                                         rx="6"
                                         fill="#1e293b"
                                         className="shadow-2xl"
@@ -266,6 +266,15 @@ export function TopologyView({ nodes, clients, gatewayNodeNames }: TopologyViewP
                                         className="text-[11px] font-mono font-bold select-none pointer-events-none"
                                     >
                                         {node.endpoint || `10.20.0.${100 + i}`}
+                                    </text>
+                                    <text
+                                        x={node.x}
+                                        y={node.y + 65}
+                                        textAnchor="middle"
+                                        fill="#f8fafc"
+                                        className="text-[11px] font-mono font-bold select-none pointer-events-none"
+                                    >
+                                        {node.name}
                                     </text>
                                 </motion.g>
                             )}

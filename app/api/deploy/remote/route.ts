@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveMeshState, generateNodeConfig } from "@/lib/generate";
+import { resolveMeshState, generateNodeAssets } from "@/lib/generate";
 import { remoteDeployer } from "@/lib/provisioning/remote-deployer";
 import { GeneratePayload } from "@/lib/types";
-import { deriveDeterministicPsk } from "@/lib/psk";
 
 export async function POST(req: NextRequest) {
     try {
@@ -25,40 +24,16 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "SSH user or port not configured for this node." }, { status: 400 });
         }
 
-        // 3. Generate PSK getter (same as in generateZip)
-        const pskMap = new Map<string, string>();
-        const getPsk = (a: string, b: string) => {
-            const sorted = [a, b].sort();
-            const key = `${sorted[0]}::${sorted[1]}`;
-            if (!pskMap.has(key)) {
-                pskMap.set(key, deriveDeterministicPsk(a, b));
-            }
-            return pskMap.get(key)!;
-        };
+        // 3. Generate all node assets (conf, babel, setup)
+        const files = generateNodeAssets(targetNode.name, payload);
 
-        // 4. Generate config string
-        const configContent = generateNodeConfig(
-            targetNode.name,
-            resolvedNodes,
-            resolvedClients,
-            nodeIps,
-            {
-                interfaceName: p.interfaceName,
-                endpointVersion: p.endpointVersion,
-                persistentKeepalive: p.persistentKeepalive,
-                includeIpForwarding: p.includeIpForwarding,
-                gatewayNodeNames: p.gatewayNodeNames
-            },
-            getPsk
-        );
-
-        // 5. Deploy via SSH
+        // 4. Deploy via SSH
         const result = await remoteDeployer.deploy({
-            host: targetNode.endpoint,
+            host: targetNode.sshHost || targetNode.endpoint,
             port: targetNode.sshPort,
             user: targetNode.sshUser,
             interfaceName: p.interfaceName,
-            configContent
+            files: files
         });
 
         if (!result.success) {

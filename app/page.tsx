@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { x25519 } from "@noble/curves/ed25519";
 import { useMeshStore } from "../lib/store";
 import { NetworkSettings } from "@/components/features/NetworkSettings";
@@ -8,6 +8,7 @@ import { GatewaySelection } from "@/components/features/GatewaySelection";
 import { NodeTable } from "@/components/features/NodeTable";
 import { ClientTable } from "@/components/features/ClientTable";
 import { TopologyView } from "@/components/features/TopologyView";
+import { BatchDeployModal, DeployStatus } from "@/components/features/BatchDeployModal";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DashboardLayout } from "@/components/features/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
@@ -58,16 +59,33 @@ export default function HomePage() {
     mtu,
     setMtu,
     resetAll,
+    reorderNodes,
+    reorderClients,
   } = useMeshStore();
 
   const [busy, setBusy] = useState(false);
+  const [sshHosts, setSshHosts] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<"list" | "topology">("list");
+
+  useEffect(() => {
+    fetch("/api/ssh-hosts")
+      .then(res => res.json())
+      .then(data => setSshHosts(data.hosts || []))
+      .catch(err => console.error("Failed to fetch SSH hosts", err));
+  }, []);
   const [isDeployOpen, setIsDeployOpen] = useState(false);
   const [isRemoteOpen, setIsRemoteOpen] = useState(false);
   const [deployNodeName, setDeployNodeName] = useState("");
   const [remoteLog, setRemoteLog] = useState("");
   const [sshUser, setSshUser] = useState("root");
   const [sshPort, setSshPort] = useState(22);
+
+  // Batch Deploy State
+  const [isBatchOpen, setIsBatchOpen] = useState(false);
+  const [isBatchDeploying, setIsBatchDeploying] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(0);
+  const [batchNodeStatuses, setBatchNodeStatuses] = useState<Record<string, DeployStatus>>({});
+  const [batchLogs, setBatchLogs] = useState("");
 
   // Actions
   const addNode = () => {
@@ -317,10 +335,83 @@ export default function HomePage() {
     }
   };
 
-  const resetForm = () => {
-    if (confirm("All settings will be reset. Are you sure?")) {
-      resetAll();
+  const executeBatchRemoteDeploy = async () => {
+    const eligibleNodes = nodes.filter(n => n.sshUser && n.sshPort && (n.sshHost || n.endpoint));
+    if (eligibleNodes.length === 0) {
+      toast.error("No nodes configured with SSH details found.");
+      return;
     }
+
+    setIsBatchDeploying(true);
+    setBatchLogs("");
+    setBatchProgress(1); // Start at 1% for visual cue
+
+    // Initial statuses
+    const newStatuses = { ...batchNodeStatuses };
+    eligibleNodes.forEach(n => {
+      if (!newStatuses[n.id] || newStatuses[n.id] === "error") {
+        newStatuses[n.id] = "pending";
+      }
+    });
+    setBatchNodeStatuses(newStatuses);
+
+    let completed = Object.values(newStatuses).filter(s => s === "success").length;
+
+    for (const node of eligibleNodes) {
+      if (newStatuses[node.id] === "success") continue;
+
+      setBatchNodeStatuses(prev => ({ ...prev, [node.id]: "deploying" }));
+      setBatchLogs(prev => prev + `\n>>> [${new Date().toLocaleTimeString()}] Starting: ${node.name}...\n`);
+
+      try {
+        const payload: GeneratePayload = {
+          networkCidr,
+          interfaceName,
+          endpointVersion,
+          persistentKeepalive,
+          includeIpForwarding,
+          enableBabel,
+          autoGenerateKeys,
+          nodes,
+          clients,
+          gatewayNodeNames,
+          mtu,
+        };
+
+        const res = await fetch("/api/deploy/remote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ payload, nodeName: node.name }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          setBatchNodeStatuses(prev => ({ ...prev, [node.id]: "error" }));
+          setBatchLogs(prev => prev + `[ERROR] ${node.name}:\n${data.log || data.error}\n`);
+        } else {
+          setBatchNodeStatuses(prev => ({ ...prev, [node.id]: "success" }));
+          setBatchLogs(prev => prev + `[SUCCESS] ${node.name} package transferred.\n`);
+          completed++;
+        }
+      } catch (err: any) {
+        setBatchNodeStatuses(prev => ({ ...prev, [node.id]: "error" }));
+        setBatchLogs(prev => prev + `[FATAL] ${node.name}: ${err.message}\n`);
+      }
+
+      setBatchProgress(((completed) / eligibleNodes.length) * 100);
+    }
+
+    setIsBatchDeploying(false);
+    if (completed === eligibleNodes.length) {
+      toast.success("Batch deployment finished successfully!");
+    } else {
+      toast.warning("Batch deployment finished with some errors.");
+    }
+  };
+
+  const resetForm = () => {
+    resetAll();
+    toast.success("Settings have been reset.");
   };
 
   const sidebarProps = {
@@ -339,6 +430,18 @@ export default function HomePage() {
       if (nodes.length === 1) setDeployNodeName(nodes[0].name);
       setRemoteLog("");
       setIsRemoteOpen(true);
+    },
+    handleBatchRemoteDeploy: () => {
+      if (nodes.length === 0) {
+        toast.error("Please add at least one node first.");
+        return;
+      }
+      const eligible = nodes.filter(n => n.sshUser && n.sshPort && (n.sshHost || n.endpoint));
+      if (eligible.length === 0) {
+        toast.error("Please configure SSH User, Port and Host for at least one node.");
+        return;
+      }
+      setIsBatchOpen(true);
     },
     resetForm,
   };
@@ -390,8 +493,10 @@ export default function HomePage() {
               removeNode={removeNode}
               updateNode={updateNode}
               generateNodeKeys={generateNodeKeys}
+              reorderNodes={reorderNodes}
               autoGenerateKeys={autoGenerateKeys}
               endpointVersion={endpointVersion}
+              sshHosts={sshHosts}
             />
           </div>
 
@@ -403,6 +508,7 @@ export default function HomePage() {
               removeClient={removeClient}
               updateClient={updateClient}
               generateClientKeys={generateClientKeys}
+              reorderClients={reorderClients}
               autoGenerateKeys={autoGenerateKeys}
             />
           </div>
@@ -586,6 +692,17 @@ export default function HomePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <BatchDeployModal
+        isOpen={isBatchOpen}
+        onClose={() => setIsBatchOpen(false)}
+        nodes={nodes}
+        isDeploying={isBatchDeploying}
+        currentProgress={batchProgress}
+        nodeStatuses={batchNodeStatuses}
+        logs={batchLogs}
+        onStart={executeBatchRemoteDeploy}
+      />
     </DashboardLayout>
   );
 }

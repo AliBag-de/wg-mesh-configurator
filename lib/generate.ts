@@ -414,3 +414,110 @@ export async function generateZip(payload: GeneratePayload) {
   const content = await zip.generateAsync({ type: "uint8array" });
   return { content, filename: `wg-mesh-${safeName(interfaceName)}.zip` };
 }
+
+export function generateNodeAssets(
+  nodeName: string,
+  payload: GeneratePayload
+): { name: string; content: string }[] {
+  const {
+    resolvedNodes,
+    resolvedClients,
+    nodeIps,
+    payload: p
+  } = resolveMeshState(payload);
+
+  const {
+    interfaceName,
+    endpointVersion,
+    persistentKeepalive,
+    includeIpForwarding,
+    enableBabel,
+    gatewayNodeNames
+  } = p;
+
+  const nodeIndex = resolvedNodes.findIndex((n) => n.name === nodeName);
+  if (nodeIndex === -1) throw new Error(`Node not found: ${nodeName}`);
+
+  const node = resolvedNodes[nodeIndex];
+  const interfaceFilename = `${safeName(interfaceName)}.conf`;
+
+  const pskMap = new Map<string, string>();
+  const getPsk = (a: string, b: string) => {
+    const sorted = [a, b].sort();
+    const key = `${sorted[0]}::${sorted[1]}`;
+    if (!pskMap.has(key)) {
+      pskMap.set(key, deriveDeterministicPsk(a, b));
+    }
+    return pskMap.get(key)!;
+  };
+
+  const assets: { name: string; content: string }[] = [];
+
+  // 1. WG Config
+  const nodeConfig = generateNodeConfig(
+    node.name,
+    resolvedNodes,
+    resolvedClients,
+    nodeIps,
+    {
+      interfaceName,
+      endpointVersion,
+      persistentKeepalive,
+      includeIpForwarding,
+      gatewayNodeNames,
+      mtu: p.mtu,
+      enableBabel: enableBabel
+    },
+    getPsk
+  );
+  assets.push({ name: interfaceFilename, content: nodeConfig });
+
+  // 2. Babel Config
+  if (enableBabel) {
+    const babelConfig = [
+      `interface ${interfaceName} type tunnel`,
+      "hello-interval 1",
+      "update-interval 4",
+      "rtt-cost 256",
+      "rtt-min 10",
+      "rtt-max 120",
+      "",
+      "redistribute local",
+      `redistribute ip ${p.networkCidr}`
+    ].join("\n");
+    assets.push({ name: "babeld.conf", content: babelConfig });
+  }
+
+  // 3. Setup Script
+  const setupScript = [
+    "#!/bin/bash",
+    "# WG-Mesh Auto-Generated Setup Script",
+    `IFACE="${interfaceName}"`,
+    "CONFIG_DIR=\"/etc/wireguard\"",
+    "",
+    `echo "[*] Configuring node: ${node.name}"`,
+    "if [ \"$EUID\" -ne 0 ]; then echo \"[!] Please run as root\"; exit 1; fi",
+    "",
+    "echo \"[*] Copying WireGuard config...\"",
+    "cp \"$IFACE.conf\" \"$CONFIG_DIR/\"",
+    "chmod 600 \"$CONFIG_DIR/$IFACE.conf\"",
+    "",
+    enableBabel ? [
+      "if [ -f \"babeld.conf\" ]; then",
+      "  echo \"[*] Setting up Babel routing...\"",
+      "  apt-get update && apt-get install -y babeld > /dev/null",
+      "  cp \"babeld.conf\" /etc/babeld.conf",
+      "  systemctl enable babeld && systemctl restart babeld",
+      "fi"
+    ].join("\n") : "",
+    "",
+    "echo \"[*] Starting WireGuard interface...\"",
+    "wg-quick up \"$IFACE\"",
+    "systemctl enable wg-quick@\"$IFACE\"",
+    "",
+    "echo \"[+] Setup complete!\"",
+  ].filter(Boolean).join("\n");
+  assets.push({ name: "setup.sh", content: setupScript });
+
+  return assets;
+}

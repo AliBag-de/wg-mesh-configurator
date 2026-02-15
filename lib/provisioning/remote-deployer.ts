@@ -11,53 +11,65 @@ export interface RemoteDeployOptions {
     port: number;
     user: string;
     interfaceName: string;
-    configContent: string;
+    files: { name: string; content: string }[];
 }
 
 export class RemoteDeployer {
     /**
-     * Deploys the WireGuard configuration to a remote host using native ssh/scp.
+     * Deploys the WireGuard configuration and assets to a remote host.
      */
     async deploy(options: RemoteDeployOptions): Promise<{ success: boolean; log: string }> {
-        const { host, port, user, interfaceName, configContent } = options;
+        const { host, port, user, interfaceName, files } = options;
         let log = `[Deploy] Starting deployment to ${user}@${host}:${port}\n`;
 
-        // 1. Create a temporary local file
+        // 1. Create a temporary local directory and write all files
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "wg-deploy-"));
-        const localPath = path.join(tempDir, `${interfaceName}.conf`);
-        await fs.writeFile(localPath, configContent, { mode: 0o600 });
 
-        const remoteTempPath = `/tmp/${interfaceName}.conf`;
-        const finalConfPath = `/etc/wireguard/${interfaceName}.conf`;
+        for (const file of files) {
+            const filePath = path.join(tempDir, file.name);
+            await fs.writeFile(filePath, file.content, { mode: 0o600 });
+        }
+
+        const remoteTempDir = `/tmp/wg_deploy_${interfaceName}`;
+
+        const isIpv6 = host.includes(":");
+        const formattedHost = isIpv6 ? `[${host}]` : host;
 
         try {
-            // 2. SCP the file to /tmp on remote
-            log += `[SCP] Uploading config to ${remoteTempPath}...\n`;
-            await execFileAsync("scp", [
-                "-P", port.toString(),
-                "-o", "StrictHostKeyChecking=accept-new",
-                localPath,
-                `${user}@${host}:${remoteTempPath}`
-            ]);
-            log += `[SCP] Success.\n`;
-
-            // 3. Move file and fix permissions with SSH
-            // We use sudo for move and up. 
-            // User must have passwordless sudo or be root.
-            log += `[SSH] Applying configuration and starting interface...\n`;
-            const sshCmd = `sudo mv ${remoteTempPath} ${finalConfPath} && sudo chmod 600 ${finalConfPath} && sudo wg-quick up ${interfaceName} || sudo wg-quick save ${interfaceName}`;
-
-            const { stdout, stderr } = await execFileAsync("ssh", [
+            // 2. Prepare remote temp dir
+            log += `[SSH] Preparing remote directory ${remoteTempDir}...\n`;
+            await execFileAsync("ssh", [
                 "-p", port.toString(),
                 "-o", "StrictHostKeyChecking=accept-new",
-                `${user}@${host}`,
-                sshCmd
-            ]);
+                "-o", "ConnectTimeout=10",
+                "-o", "BatchMode=yes",
+                `${user}@${formattedHost}`,
+                `mkdir -p ${remoteTempDir}`
+            ], { timeout: 15000 });
 
-            if (stdout) log += `[SSH STDOUT] ${stdout}\n`;
-            if (stderr) log += `[SSH STDERR] ${stderr}\n`;
+            // 3. SCP the entire directory to remote
+            log += `[SCP] Uploading files to ${remoteTempDir}...\n`;
+            await execFileAsync("scp", [
+                "-P", port.toString(),
+                "-r",
+                "-o", "StrictHostKeyChecking=accept-new",
+                "-o", "ConnectTimeout=10",
+                "-o", "BatchMode=yes",
+                `${tempDir}/.`, // Upload contents of tempDir
+                `${user}@${formattedHost}:${remoteTempDir}`
+            ], { timeout: 30000 });
+            log += `[SCP] Success.\n`;
 
-            log += `[Deploy] Finished successfully.\n`;
+            // 4. Provide manual installation instruction
+            const manualCmd = `cd ${remoteTempDir} && sudo bash ./setup.sh`;
+
+            log += `\n[ACTION REQUIRED] Files uploaded to ${remoteTempDir}. Connection to ${formattedHost} is active.\n`;
+            log += `Run the following command on the remote server to complete installation:\n\n`;
+            log += `------------------------------------------------------------\n`;
+            log += `${manualCmd}\n`;
+            log += `------------------------------------------------------------\n\n`;
+            log += `[Deploy] Preparation finished successfully.\n`;
+
             return { success: true, log };
 
         } catch (error: any) {

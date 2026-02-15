@@ -4,17 +4,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ClientInput } from "@/lib/types";
-import { Key, Plus, Trash2, Users } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
+import { Key, Plus, Trash2, Users, GripVertical, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { AnimatePresence, motion, Reorder } from "framer-motion";
 import { colorForKey } from "@/lib/color";
 import { QRCodeDialog } from "./QRCodeDialog";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useMeshStore } from "@/lib/store";
 import { generateClientConfig } from "@/lib/qr-config";
 import { QrCode as QrIcon } from "lucide-react";
 import { calculateClientIp } from "@/lib/ip-utils";
 import { deriveDeterministicPsk } from "@/lib/psk";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface ClientTableProps {
     clients: ClientInput[];
@@ -22,8 +23,12 @@ interface ClientTableProps {
     removeClient: (id: string) => void;
     updateClient: (id: string, patch: Partial<ClientInput>) => void;
     generateClientKeys: (id: string) => void;
+    reorderClients: (newClients: ClientInput[]) => void;
     autoGenerateKeys: boolean;
 }
+
+type SortKey = "name" | "wgIp" | "manual";
+type SortDir = "asc" | "desc";
 
 export function ClientTable({
     clients,
@@ -31,8 +36,38 @@ export function ClientTable({
     removeClient,
     updateClient,
     generateClientKeys,
+    reorderClients,
     autoGenerateKeys,
 }: ClientTableProps) {
+    const [sortKey, setSortKey] = useState<SortKey>("manual");
+    const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+    const handleSort = (key: SortKey) => {
+        if (sortKey === key) {
+            setSortDir(sortDir === "asc" ? "desc" : "asc");
+        } else {
+            setSortKey(key);
+            setSortDir("asc");
+        }
+    };
+
+    const sortedClients = useMemo(() => {
+        if (sortKey === "manual") return clients;
+
+        return [...clients].sort((a, b) => {
+            const valA = a[sortKey as keyof ClientInput] ?? "";
+            const valB = b[sortKey as keyof ClientInput] ?? "";
+
+            if (valA < valB) return sortDir === "asc" ? -1 : 1;
+            if (valA > valB) return sortDir === "asc" ? 1 : -1;
+            return 0;
+        });
+    }, [clients, sortKey, sortDir]);
+
+    const SortIcon = ({ k }: { k: SortKey }) => {
+        if (sortKey !== k) return <ArrowUpDown className="h-3 w-3 opacity-30 group-hover:opacity-100 transition-opacity" />;
+        return sortDir === "asc" ? <ArrowUp className="h-3 w-3 text-blue-400" /> : <ArrowDown className="h-3 w-3 text-blue-400" />;
+    };
     const [qrClient, setQrClient] = useState<{ name: string; config: string } | null>(null);
     const { nodes, networkCidr, endpointVersion, persistentKeepalive, gatewayNodeNames, mtu } = useMeshStore();
 
@@ -99,29 +134,65 @@ export function ClientTable({
                     </div>
                 ) : (
                     <table className="w-full text-xs text-left">
-                        <thead className="bg-muted/10 text-muted-foreground font-medium border-b">
+                        <thead className="bg-muted/10 text-muted-foreground font-medium border-b select-none">
                             <tr>
-                                <th className="px-3 py-2 w-16 text-center">#</th>
-                                <th className="px-3 py-2 w-32">Name</th>
-                                <th className="px-3 py-2 w-32">WG IP</th>
+                                <th
+                                    className="px-3 py-2 w-16 text-center cursor-pointer hover:text-blue-400 transition-colors"
+                                    onClick={() => setSortKey("manual")}
+                                    title="Switch to manual order for drag-and-drop"
+                                >
+                                    #
+                                </th>
+                                <th
+                                    className="px-3 py-2 w-32 cursor-pointer group"
+                                    onClick={() => handleSort("name")}
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        Name <SortIcon k="name" />
+                                    </div>
+                                </th>
+                                <th
+                                    className="px-3 py-2 w-32 cursor-pointer group"
+                                    onClick={() => handleSort("wgIp")}
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        WG IP <SortIcon k="wgIp" />
+                                    </div>
+                                </th>
                                 {!autoGenerateKeys && <th className="px-3 py-2">Keys (Private / Public)</th>}
                                 <th className="px-3 py-2 w-[100px] text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-border/50">
+                        <Reorder.Group
+                            as="tbody"
+                            axis="y"
+                            values={clients}
+                            onReorder={reorderClients}
+                            className="divide-y divide-border/50"
+                        >
                             <AnimatePresence mode="popLayout">
-                                {clients.map((client, index) => {
+                                {sortedClients.map((client, index) => {
                                     return (
-                                        <motion.tr
+                                        <Reorder.Item
+                                            as="tr"
                                             key={client.id}
-                                            layout
+                                            value={client}
+                                            dragListener={sortKey === "manual"}
                                             initial={{ opacity: 0, y: -10 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             exit={{ opacity: 0, scale: 0.95 }}
                                             transition={{ duration: 0.2 }}
-                                            className="group hover:bg-muted/10 transition-colors"
+                                            className={cn(
+                                                "group hover:bg-muted/10 transition-colors",
+                                                sortKey === "manual" ? "cursor-grab active:cursor-grabbing" : "cursor-default"
+                                            )}
                                         >
-                                            <td className="px-3 py-2 text-center text-muted-foreground font-mono">
+                                            <td className="px-3 py-2 text-center text-muted-foreground font-mono relative">
+                                                {sortKey === "manual" && (
+                                                    <div className="absolute left-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <GripVertical className="h-3 w-3 text-muted-foreground/50" />
+                                                    </div>
+                                                )}
                                                 C-{index + 1}
                                             </td>
                                             <td className="px-3 py-2">
@@ -175,7 +246,10 @@ export function ClientTable({
                                                         variant="ghost"
                                                         size="icon"
                                                         className="h-6 w-6 text-muted-foreground hover:text-blue-400"
-                                                        onClick={() => handleShowQR(client)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleShowQR(client);
+                                                        }}
                                                         title="Show QR Code"
                                                     >
                                                         <QrIcon className="h-3 w-3" />
@@ -192,7 +266,10 @@ export function ClientTable({
                                                         variant="ghost"
                                                         size="icon"
                                                         className="h-6 w-6 text-muted-foreground hover:text-blue-400"
-                                                        onClick={() => generateClientKeys(client.id)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            generateClientKeys(client.id);
+                                                        }}
                                                         title="Generate Keys"
                                                     >
                                                         <Key className="h-3 w-3" />
@@ -201,18 +278,21 @@ export function ClientTable({
                                                         variant="ghost"
                                                         size="icon"
                                                         className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                                                        onClick={() => removeClient(client.id)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            removeClient(client.id);
+                                                        }}
                                                         title="Delete"
                                                     >
                                                         <Trash2 className="h-3 w-3" />
                                                     </Button>
                                                 </div>
                                             </td>
-                                        </motion.tr>
+                                        </Reorder.Item>
                                     );
                                 })}
                             </AnimatePresence>
-                        </tbody>
+                        </Reorder.Group>
                     </table>
                 )}
             </div>

@@ -6,7 +6,7 @@ import { useRef } from "react";
 import { useMeshStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Download, LayoutDashboard, RefreshCw, Zap, Server, Network, Shield, Upload, ChevronDown, ChevronRight, Hash, Trash2 } from "lucide-react";
+import { Download, LayoutDashboard, RefreshCw, Zap, Server, Network, Shield, Upload, ChevronDown, ChevronRight, Hash, Trash2, Files } from "lucide-react";
 import { EndpointVersion } from "@/lib/types";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -31,6 +31,7 @@ interface SidebarProps {
     handleSubmit: () => void;
     handleDeploy?: () => void;
     handleRemoteDeploy?: () => void;
+    handleBatchRemoteDeploy?: () => void;
     resetForm: () => void;
     className?: string;
 }
@@ -45,6 +46,7 @@ export function Sidebar({
     handleSubmit,
     handleDeploy,
     handleRemoteDeploy,
+    handleBatchRemoteDeploy,
     resetForm,
     className,
 }: SidebarProps) {
@@ -232,6 +234,18 @@ export function Sidebar({
                             >
                                 <Server className="mr-2 h-3.5 w-3.5" />
                                 Deploy to Remote
+                            </Button>
+                        )}
+                        {handleBatchRemoteDeploy && (
+                            <Button
+                                variant="default"
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/10 h-8 text-xs"
+                                size="sm"
+                                onClick={handleBatchRemoteDeploy}
+                                disabled={busy}
+                            >
+                                <Files className="mr-2 h-3.5 w-3.5" />
+                                Deploy to All Remote
                             </Button>
                         )}
                         {handleDeploy && (

@@ -31,6 +31,8 @@ type MeshState = {
   ) => void;
   setGatewayTouched: (value: boolean) => void;
   setMtu: (value: number) => void;
+  reorderNodes: (newNodes: NodeInput[]) => void;
+  reorderClients: (newClients: ClientInput[]) => void;
   resetAll: () => void;
 };
 
@@ -65,8 +67,8 @@ const defaultState = () => ({
   includeIpForwarding: true,
   enableBabel: true,
   autoGenerateKeys: true,
-  nodes: [defaultNode(0), defaultNode(1), defaultNode(2)],
-  clients: [defaultClient(0), defaultClient(1), defaultClient(2)],
+  nodes: [],
+  clients: [],
   gatewayNodeNames: [],
   gatewayTouched: false,
   mtu: 1420
@@ -98,6 +100,8 @@ export const useMeshStore = create<MeshState>()(
         })),
       setGatewayTouched: (value) => set({ gatewayTouched: value }),
       setMtu: (value) => set({ mtu: value }),
+      reorderNodes: (newNodes) => set({ nodes: newNodes }),
+      reorderClients: (newClients) => set({ clients: newClients }),
       resetAll: () => set(defaultState())
     }),
     {

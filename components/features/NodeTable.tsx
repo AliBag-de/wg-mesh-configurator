@@ -4,10 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { NodeInput } from "@/lib/types";
-import { Key, Plus, Trash2, Server } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Key, Plus, Trash2, Server, GripVertical, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { EndpointVersion } from "@/lib/types";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, Reorder } from "framer-motion";
 import { colorForKey } from "@/lib/color";
+import { useState, useMemo } from "react";
 
 interface NodeTableProps {
     nodes: NodeInput[];
@@ -15,9 +17,14 @@ interface NodeTableProps {
     removeNode: (id: string) => void;
     updateNode: (id: string, patch: Partial<NodeInput>) => void;
     generateNodeKeys: (id: string) => void;
+    reorderNodes: (newNodes: NodeInput[]) => void;
     autoGenerateKeys: boolean;
     endpointVersion: EndpointVersion;
+    sshHosts?: string[];
 }
+
+type SortKey = "name" | "endpoint" | "wgIp" | "sshHost" | "listenPort" | "manual";
+type SortDir = "asc" | "desc";
 
 export function NodeTable({
     nodes,
@@ -25,9 +32,40 @@ export function NodeTable({
     removeNode,
     updateNode,
     generateNodeKeys,
+    reorderNodes,
     autoGenerateKeys,
     endpointVersion,
+    sshHosts = [],
 }: NodeTableProps) {
+    const [sortKey, setSortKey] = useState<SortKey>("manual");
+    const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+    const handleSort = (key: SortKey) => {
+        if (sortKey === key) {
+            setSortDir(sortDir === "asc" ? "desc" : "asc");
+        } else {
+            setSortKey(key);
+            setSortDir("asc");
+        }
+    };
+
+    const sortedNodes = useMemo(() => {
+        if (sortKey === "manual") return nodes;
+
+        return [...nodes].sort((a, b) => {
+            const valA = a[sortKey as keyof NodeInput] ?? "";
+            const valB = b[sortKey as keyof NodeInput] ?? "";
+
+            if (valA < valB) return sortDir === "asc" ? -1 : 1;
+            if (valA > valB) return sortDir === "asc" ? 1 : -1;
+            return 0;
+        });
+    }, [nodes, sortKey, sortDir]);
+
+    const SortIcon = ({ k }: { k: SortKey }) => {
+        if (sortKey !== k) return <ArrowUpDown className="h-3 w-3 opacity-30 group-hover:opacity-100 transition-opacity" />;
+        return sortDir === "asc" ? <ArrowUp className="h-3 w-3 text-primary" /> : <ArrowDown className="h-3 w-3 text-primary" />;
+    };
     return (
         <div className="rounded-lg border bg-card/50 backdrop-blur-sm overflow-hidden">
             {/* ... Header ... */}
@@ -51,31 +89,89 @@ export function NodeTable({
                     </div>
                 ) : (
                     <table className="w-full text-xs text-left">
-                        <thead className="bg-muted/10 text-muted-foreground font-medium border-b">
+                        <thead className="bg-muted/10 text-muted-foreground font-medium border-b select-none">
                             <tr>
-                                <th className="px-3 py-2 w-10 text-center">#</th>
-                                <th className="px-3 py-2 w-32">Name</th>
-                                <th className="px-3 py-2 w-48">Endpoint</th>
-                                <th className="px-3 py-2 w-32">WG IP</th>
-                                <th className="px-3 py-2 w-24">Port</th>
+                                <th
+                                    className="px-3 py-2 w-10 text-center cursor-pointer hover:text-primary transition-colors"
+                                    onClick={() => setSortKey("manual")}
+                                    title="Switch to manual order for drag-and-drop"
+                                >
+                                    #
+                                </th>
+                                <th
+                                    className="px-3 py-2 w-32 cursor-pointer group"
+                                    onClick={() => handleSort("name")}
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        Name <SortIcon k="name" />
+                                    </div>
+                                </th>
+                                <th
+                                    className="px-3 py-2 w-48 cursor-pointer group"
+                                    onClick={() => handleSort("endpoint")}
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        WG Endpoint <SortIcon k="endpoint" />
+                                    </div>
+                                </th>
+                                <th
+                                    className="px-3 py-2 w-36 cursor-pointer group"
+                                    onClick={() => handleSort("sshHost")}
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        SSH Host <SortIcon k="sshHost" />
+                                    </div>
+                                </th>
+                                <th
+                                    className="px-3 py-2 w-32 cursor-pointer group"
+                                    onClick={() => handleSort("wgIp")}
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        WG IP <SortIcon k="wgIp" />
+                                    </div>
+                                </th>
+                                <th
+                                    className="px-3 py-2 w-24 cursor-pointer group text-center"
+                                    onClick={() => handleSort("listenPort")}
+                                >
+                                    <div className="flex items-center justify-center gap-1.5">
+                                        Port <SortIcon k="listenPort" />
+                                    </div>
+                                </th>
                                 {!autoGenerateKeys && <th className="px-3 py-2">Keys (Private / Public)</th>}
                                 <th className="px-3 py-2 w-20 text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-border/50">
+                        <Reorder.Group
+                            as="tbody"
+                            axis="y"
+                            values={nodes}
+                            onReorder={reorderNodes}
+                            className="divide-y divide-border/50"
+                        >
                             <AnimatePresence mode="popLayout">
-                                {nodes.map((node, index) => {
+                                {sortedNodes.map((node, index) => {
                                     return (
-                                        <motion.tr
+                                        <Reorder.Item
+                                            as="tr"
                                             key={node.id}
-                                            layout
+                                            value={node}
+                                            dragListener={sortKey === "manual"}
                                             initial={{ opacity: 0, y: -10 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             exit={{ opacity: 0, scale: 0.95 }}
                                             transition={{ duration: 0.2 }}
-                                            className="group hover:bg-muted/10 transition-colors"
+                                            className={cn(
+                                                "group hover:bg-muted/10 transition-colors",
+                                                sortKey === "manual" ? "cursor-grab active:cursor-grabbing" : "cursor-default"
+                                            )}
                                         >
-                                            <td className="px-3 py-2 text-center text-muted-foreground font-mono">
+                                            <td className="px-3 py-2 text-center text-muted-foreground font-mono relative">
+                                                {sortKey === "manual" && (
+                                                    <div className="absolute left-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <GripVertical className="h-3 w-3 text-muted-foreground/50" />
+                                                    </div>
+                                                )}
                                                 {index + 1}
                                             </td>
                                             <td className="px-3 py-2">
@@ -102,6 +198,7 @@ export function NodeTable({
                                                     <Input
                                                         value={node.endpoint}
                                                         onChange={(e) => updateNode(node.id, { endpoint: e.target.value })}
+                                                        placeholder="IPv6 Endpoint"
                                                         className="h-7 text-xs font-mono px-2 bg-background/50 border-transparent focus:border-primary/50 focus:bg-background transition-all"
                                                     />
                                                     {node.endpoint.includes(":") && !node.endpoint.includes(".") && (
@@ -110,6 +207,20 @@ export function NodeTable({
                                                         </span>
                                                     )}
                                                 </div>
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <Input
+                                                    value={node.sshHost ?? ""}
+                                                    onChange={(e) => updateNode(node.id, { sshHost: e.target.value })}
+                                                    placeholder="IPv4 or Alias"
+                                                    list={`ssh-hosts-${node.id}`}
+                                                    className="h-7 text-xs font-mono px-2 bg-background/50 border-transparent focus:border-primary/50 focus:bg-background transition-all"
+                                                />
+                                                <datalist id={`ssh-hosts-${node.id}`}>
+                                                    {sshHosts.map(h => (
+                                                        <option key={h} value={h} />
+                                                    ))}
+                                                </datalist>
                                             </td>
                                             <td className="px-3 py-2">
                                                 <Input
@@ -159,7 +270,10 @@ export function NodeTable({
                                                         variant="ghost"
                                                         size="icon"
                                                         className="h-6 w-6 text-muted-foreground hover:text-primary"
-                                                        onClick={() => generateNodeKeys(node.id)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            generateNodeKeys(node.id);
+                                                        }}
                                                         title="Generate Keys"
                                                     >
                                                         <Key className="h-3.5 w-3.5" />
@@ -168,18 +282,21 @@ export function NodeTable({
                                                         variant="ghost"
                                                         size="icon"
                                                         className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                                                        onClick={() => removeNode(node.id)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            removeNode(node.id);
+                                                        }}
                                                         title="Delete"
                                                     >
                                                         <Trash2 className="h-3 w-3" />
                                                     </Button>
                                                 </div>
                                             </td>
-                                        </motion.tr>
+                                        </Reorder.Item>
                                     );
                                 })}
                             </AnimatePresence>
-                        </tbody>
+                        </Reorder.Group>
                     </table>
                 )
                 }
