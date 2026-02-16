@@ -204,6 +204,8 @@ export function generateNodeConfig(
     // and cryptokey routing integrity in the mesh.
     const allowedIps = `${peerIp}/32`;
 
+    const peerEndpoint = peer.endpoint ? formatEndpoint(peer.endpoint, config.endpointVersion, peer.listenPort) : null;
+
     lines.push(
       "",
       `# ${peer.name}`,
@@ -211,7 +213,7 @@ export function generateNodeConfig(
       `PublicKey = ${peer.publicKey}`,
       `PresharedKey = ${psk}`,
       `AllowedIPs = ${allowedIps}`,
-      `Endpoint = ${formatEndpoint(peer.endpoint, config.endpointVersion, peer.listenPort)}`,
+      ...(peerEndpoint ? [`Endpoint = ${peerEndpoint}`] : []),
       `PersistentKeepalive = ${config.persistentKeepalive}`
     );
   }

@@ -16,8 +16,8 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Node not found" }, { status: 404 });
         }
 
-        if (!targetNode.endpoint) {
-            return NextResponse.json({ error: "Node has no endpoint/IP address." }, { status: 400 });
+        if (!targetNode.endpoint && !targetNode.sshHost) {
+            return NextResponse.json({ error: "Node has no SSH Host or Public Endpoint configured." }, { status: 400 });
         }
 
         if (!targetNode.sshUser || !targetNode.sshPort) {

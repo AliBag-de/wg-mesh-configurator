@@ -64,7 +64,7 @@ export default function HomePage() {
   } = useMeshStore();
 
   const [busy, setBusy] = useState(false);
-  const [sshHosts, setSshHosts] = useState<string[]>([]);
+  const [sshHosts, setSshHosts] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<"list" | "topology">("list");
 
   useEffect(() => {
@@ -306,9 +306,15 @@ export default function HomePage() {
         gatewayNodeNames, mtu,
       };
 
-      // Find target node and inject SSH credentials temporarily for the API
+      const node = nodes.find(n => n.name === deployNodeName);
+      if (!node) throw new Error("Node not found");
+
+      // Use node-level credentials if available, otherwise fallback to global state
+      const targetUser = node.sshUser || sshUser;
+      const targetPort = node.sshPort || sshPort;
+
       const nodesWithSSH = nodes.map(n =>
-        n.name === deployNodeName ? { ...n, sshUser, sshPort } : n
+        n.name === deployNodeName ? { ...n, sshUser: targetUser, sshPort: targetPort } : n
       );
       const enrichedPayload = { ...payload, nodes: nodesWithSSH };
 
@@ -583,7 +589,17 @@ export default function HomePage() {
                 <select
                   className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-medium"
                   value={deployNodeName}
-                  onChange={(e) => setDeployNodeName(e.target.value)}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    setDeployNodeName(name);
+                    // Pre-fill from node data
+                    const node = nodes.find(n => n.name === name);
+                    if (node) {
+                      if (node.sshUser) setSshUser(node.sshUser);
+                      if (node.sshPort) setSshPort(node.sshPort);
+                      else if (!node.sshPort) setSshPort(22); // Default to 22 if not set
+                    }
+                  }}
                 >
                   <option value="" disabled>Select target node to begin...</option>
                   {nodes.map((node) => (
@@ -628,8 +644,8 @@ export default function HomePage() {
                       const node = nodes.find(n => n.name === deployNodeName);
                       return (
                         <div className="h-9 flex items-center justify-between px-3 bg-blue-600/10 rounded-lg border border-blue-600/20 text-blue-700 font-mono text-xs font-bold truncate">
-                          <span className="opacity-60 text-[9px] uppercase tracking-tighter mr-2 hidden sm:inline">IP:</span>
-                          <span className="flex-1 text-center sm:text-right">{node?.endpoint || "Undefined"}</span>
+                          <span className="opacity-60 text-[9px] uppercase tracking-tighter mr-2 hidden sm:inline">Target:</span>
+                          <span className="flex-1 text-center sm:text-right">{node?.sshHost || node?.endpoint || "Undefined"}</span>
                         </div>
                       );
                     })()}

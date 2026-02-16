@@ -20,10 +20,10 @@ interface NodeTableProps {
     reorderNodes: (newNodes: NodeInput[]) => void;
     autoGenerateKeys: boolean;
     endpointVersion: EndpointVersion;
-    sshHosts?: string[];
+    sshHosts?: any[];
 }
 
-type SortKey = "name" | "endpoint" | "wgIp" | "sshHost" | "listenPort" | "manual";
+type SortKey = "name" | "endpoint" | "wgIp" | "sshHost" | "sshUser" | "sshPort" | "listenPort" | "manual";
 type SortDir = "asc" | "desc";
 
 export function NodeTable({
@@ -123,6 +123,22 @@ export function NodeTable({
                                     </div>
                                 </th>
                                 <th
+                                    className="px-3 py-2 w-28 cursor-pointer group"
+                                    onClick={() => handleSort("sshUser")}
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        User <SortIcon k="sshUser" />
+                                    </div>
+                                </th>
+                                <th
+                                    className="px-3 py-2 w-20 cursor-pointer group"
+                                    onClick={() => handleSort("sshPort")}
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        Port <SortIcon k="sshPort" />
+                                    </div>
+                                </th>
+                                <th
                                     className="px-3 py-2 w-32 cursor-pointer group"
                                     onClick={() => handleSort("wgIp")}
                                 >
@@ -211,16 +227,43 @@ export function NodeTable({
                                             <td className="px-3 py-2">
                                                 <Input
                                                     value={node.sshHost ?? ""}
-                                                    onChange={(e) => updateNode(node.id, { sshHost: e.target.value })}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        updateNode(node.id, { sshHost: val });
+                                                        // Auto-fill logic
+                                                        const match = sshHosts.find(h => h.host === val);
+                                                        if (match) {
+                                                            const patch: Partial<NodeInput> = {};
+                                                            if (match.user) patch.sshUser = match.user;
+                                                            if (match.port) patch.sshPort = match.port;
+                                                            if (Object.keys(patch).length > 0) updateNode(node.id, patch);
+                                                        }
+                                                    }}
                                                     placeholder="IPv4 or Alias"
                                                     list={`ssh-hosts-${node.id}`}
                                                     className="h-7 text-xs font-mono px-2 bg-background/50 border-transparent focus:border-primary/50 focus:bg-background transition-all"
                                                 />
                                                 <datalist id={`ssh-hosts-${node.id}`}>
                                                     {sshHosts.map(h => (
-                                                        <option key={h} value={h} />
+                                                        <option key={h.host} value={h.host} />
                                                     ))}
                                                 </datalist>
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <Input
+                                                    value={node.sshUser ?? ""}
+                                                    onChange={(e) => updateNode(node.id, { sshUser: e.target.value })}
+                                                    placeholder="root"
+                                                    className="h-7 text-xs font-mono px-2 bg-background/50 border-transparent focus:border-primary/50 focus:bg-background transition-all"
+                                                />
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <Input
+                                                    type="number"
+                                                    value={node.sshPort ?? 22}
+                                                    onChange={(e) => updateNode(node.id, { sshPort: Number(e.target.value) })}
+                                                    className="h-7 text-xs font-mono px-2 bg-background/50 border-transparent focus:border-primary/50 focus:bg-background transition-all"
+                                                />
                                             </td>
                                             <td className="px-3 py-2">
                                                 <Input

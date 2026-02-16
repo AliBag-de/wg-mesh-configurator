@@ -10,26 +10,35 @@ export async function GET() {
         try {
             const content = await fs.readFile(sshConfigPath, "utf-8");
             const lines = content.split("\n");
-            const hosts: string[] = [];
+
+            const hosts: any[] = [];
+            let currentHost: any = null;
 
             lines.forEach(line => {
                 const trimmed = line.trim();
-                // Match "Host " at the beginning, but ignore wildcards
-                if (trimmed.toLowerCase().startsWith("host ") && !trimmed.includes("*") && !trimmed.includes("?")) {
-                    const hostPart = trimmed.substring(5).trim();
-                    // Some configs might have multiple hosts on one line: Host srv1 srv2
-                    const parts = hostPart.split(/\s+/);
-                    parts.forEach(p => {
-                        if (p && !hosts.includes(p)) {
-                            hosts.push(p);
-                        }
-                    });
+                if (!trimmed || trimmed.startsWith("#")) return;
+
+                const [key, ...rest] = trimmed.split(/\s+/);
+                const value = rest.join(" ").trim();
+
+                if (key.toLowerCase() === "host") {
+                    if (currentHost && currentHost.host && !currentHost.host.includes("*") && !currentHost.host.includes("?")) {
+                        hosts.push(currentHost);
+                    }
+                    currentHost = { host: value };
+                } else if (currentHost) {
+                    if (key.toLowerCase() === "hostname") currentHost.hostname = value;
+                    else if (key.toLowerCase() === "user") currentHost.user = value;
+                    else if (key.toLowerCase() === "port") currentHost.port = parseInt(value, 10);
                 }
             });
 
-            return NextResponse.json({ hosts: hosts.sort() });
+            if (currentHost && currentHost.host && !currentHost.host.includes("*") && !currentHost.host.includes("?")) {
+                hosts.push(currentHost);
+            }
+
+            return NextResponse.json({ hosts });
         } catch (err) {
-            // If file doesn't exist, just return empty list
             return NextResponse.json({ hosts: [] });
         }
     } catch (error: any) {
