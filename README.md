@@ -1,71 +1,78 @@
 # 🕸️ WG Mesh Configurator
 
-**WG Mesh Configurator** is a modern, web-based tool to generate, manage, and monitor **WireGuard Mesh Networks**. It simplifies the complex task of creating full-mesh or hub-and-spoke configurations and provides real-time status monitoring of your peers.
+**WG Mesh Configurator** is a modern, web-based orchestration tool for **WireGuard Mesh Networks**. It automates the complex process of generating, distributing, and installing WireGuard configurations across multiple remote servers.
 
-![Dashboard Preview](https://your-screenshot-url-here.com)
+---
 
-## ✨ Features
+## ✨ Key Features
 
-- **🎨 Visual Mesh Builder**: Define standard Nodes (Gateways) and Clients (Phones/Laptops) with a clean UI.
-- **🔗 Topology View**: Visualize your network structure with an interactive graph.
-- **⚡ Live Status Monitoring**: See real-time "Online/Offline" status and data transfer usage for every peer (requires Docker host access).
-- **📱 QR Code Support**: Instantly scan configurations for mobile clients (iOS/Android) directly from the dashboard.
-- **🛠️ Auto-Configuration**: 
-  - Automatically generates **Private/Public Keys** (Curve25519).
-  - Assigns IPs automatically based on your CIDR.
-  - Handles **Babeld** routing configurations for dynamic mesh routing.
-- **📦 Zero-Dependency Export**: Generates a `.zip` file with individual `.conf` files for every peer.
-- **🔒 Secure & Private**: Runs entirely locally or on your server. No external databases required.
+- **🎨 Visual Mesh Builder**: Define standard Nodes (Gateways) and Clients with a specialized UI.
+- **� One-Click Remote Deploy**: Push configurations directly to remote servers via SSH. No manual file transfer needed.
+- **🔄 Batch Deployment**: Deploy to your entire mesh network sequentially with real-time logs and progress tracking.
+- **🔑 SSH Integration**: Automatically parses your `~/.ssh/config` for easy host selection and credential auto-fill.
+- **🔗 Intelligent Topology**: Automatically generates full-mesh routing tables and Babeld dynamic routing configs.
+- **🛡️ Secure Manual Flow**: Provides copy-pasteable commands for servers requiring manual intervention, uploading assets to `/tmp` securely.
+- **📱 QR Code Support**: Instant configuration for mobile peers.
 
-## 🚀 Getting Started
+---
 
-### Option 1: Docker (Recommended for Monitoring)
-Run the application on your WireGuard server to enable Live Status monitoring.
+## 📋 Requirements
 
-1.  Clone the repository:
-    ```bash
-    git clone https://github.com/yourusername/wg-mesh-config.git
-    cd wg-mesh-config
-    ```
+### Target Servers (Nodes)
+To use the **Remote Deployment** feature, target servers must have:
+- **OS**: Linux (Ubuntu/Debian recommended).
+- **Packages**: `wireguard-tools` must be installed (`sudo apt install wireguard-tools`).
+- **Sudo Access**: The SSH user must have `sudo` privileges to apply network changes.
+- **Optional**: `babeld` for dynamic routing if mesh routing is enabled.
 
-2.  Start the container:
-    ```bash
-    docker-compose up -d --build
-    ```
+### Orchestrator (Where this app runs)
+- **Node.js**: v18 or later.
+- **SSH Access**: Passwordless SSH (SSH Keys) configured for all target nodes.
 
-3.  Access the dashboard:
-    *   **Secure Mode**: The app binds to `127.0.0.1` by default for security.
-    *   Access via SSH Tunnel: `ssh -L 3000:127.0.0.1:3000 user@your-server`
-    *   Open `http://localhost:3000` in your browser.
+---
 
-### Option 2: Local Development
-1.  Install dependencies:
-    ```bash
-    npm install
-    ```
-2.  Run the development server:
-    ```bash
-    npm run dev
-    ```
+## 🚀 Usage Guide
 
-## 🛠️ Technology Stack
+### 1. Define Your Network
+1.  **Network CIDR**: Set your internal mesh network range (e.g., `10.20.0.0/24`).
+2.  **Add Nodes**: Enter names for your servers.
+    *   **WG Endpoint**: The public IP/Domain other nodes will connect to.
+    *   **SSH Host**: The IP or Alias (from `~/.ssh/config`) used for management.
+3.  **SSH Credentials**: Click the **User/Port** fields in the table to specify node-specific credentials.
 
-- **Framework**: [Next.js 14](https://nextjs.org/) (App Router)
-- **UI Architecture**: [shadcn/ui](https://ui.shadcn.com/) + [Tailwind CSS](https://tailwindcss.com/)
-- **State Management**: [Zustand](https://github.com/pmndrs/zustand)
-- **Visualization**: [React Force Graph](https://github.com/vasturiano/react-force-graph)
-- **Cryptography**: [@noble/curves](https://github.com/paulmillr/noble-curves) (Ed25519/X25519)
+### 2. Deploy Configurations
 
-## 🗺️ Roadmap
+#### Single Node Deploy
+1. Click the **"Install on Remote Server"** button in the sidebar.
+2. Select your target node.
+3. Review the auto-filled SSH details and click **"Start Deployment"**.
 
-Here are some features planned for future releases:
-- [ ] **Traffic Charts**: Historical data usage graphs.
-- [ ] **Multi-Interface Support**: Manage `wg0`, `wg1` etc. simultaneously.
+#### Batch (All Nodes) Deploy
+1. Ensure all nodes have **SSH Host**, **User**, and **Port** defined.
+2. Click the **"Deploy to All Remote"** button.
+3. Monitor the real-time execution in the high-style deployment modal.
 
-## 🤝 Contributing
+---
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+## 🛠️ Installation
+
+### Docker (Recommended)
+```bash
+docker-compose up -d --build
+```
+
+### Local Development
+1. `npm install`
+2. `npm run dev`
+3. Open `http://localhost:3000`
+
+---
+
+## 🔐 Security Information
+- **Credential Handling**: This application **does not save** your SSH credentials in persistent storage. They are used only during the active browser session.
+- **Config Privacy**: All keys are generated locally in your browser/server instance. No data is sent to external APIs except your own target nodes.
+
+---
 
 ## 📄 License
-
-This project is open source and available under the [MIT License](LICENSE).
+MIT License. Created with ❤️ for the WireGuard community.
