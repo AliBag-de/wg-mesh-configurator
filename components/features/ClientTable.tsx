@@ -113,28 +113,31 @@ export function ClientTable({
     };
 
     return (
-        <div className="rounded-lg border bg-card/50 backdrop-blur-sm overflow-hidden mt-6">
-            <div className="flex items-center justify-between p-3 border-b bg-muted/20">
-                <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4 text-blue-400" />
-                    <h3 className="text-sm font-semibold tracking-tight">Clients</h3>
-                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px] rounded-sm bg-blue-500/10 text-blue-400">
+        <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-md shadow-lg overflow-hidden mt-6 relative group">
+            <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/5 to-transparent pointer-events-none" />
+            <div className="flex items-center justify-between p-4 border-b border-border/40 bg-secondary/30 relative z-10">
+                <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 rounded-md bg-blue-500/10 border border-blue-500/20">
+                        <Users className="h-4 w-4 text-blue-400" />
+                    </div>
+                    <h3 className="text-sm font-semibold tracking-wide">Network Clients</h3>
+                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px] rounded-sm bg-blue-500/10 text-blue-400 border-transparent">
                         {clients.length}
                     </Badge>
                 </div>
-                <Button onClick={addClient} size="sm" variant="outline" className="h-7 text-xs gap-1.5 border-blue-500/20 text-blue-400 hover:bg-blue-500/10 hover:text-blue-300">
-                    <Plus className="h-3 w-3" /> Add
+                <Button onClick={addClient} size="sm" variant="outline" className="h-8 text-xs gap-1.5 bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.1)] transition-all">
+                    <Plus className="h-3.5 w-3.5" /> Add Client
                 </Button>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto relative z-10">
                 {clients.length === 0 ? (
-                    <div className="p-8 text-center text-muted-foreground text-sm">
-                        No clients found.
+                    <div className="p-12 text-center text-muted-foreground/70 text-sm italic bg-black/10 border-t border-dashed border-border/40">
+                        No clients configured. Add a client device (laptop, phone, etc) to access the network.
                     </div>
                 ) : (
                     <table className="w-full text-xs text-left">
-                        <thead className="bg-muted/10 text-muted-foreground font-medium border-b select-none">
+                        <thead className="bg-black/20 text-muted-foreground font-medium border-b border-border/40 select-none">
                             <tr>
                                 <th
                                     className="px-3 py-2 w-16 text-center cursor-pointer hover:text-blue-400 transition-colors"
@@ -183,7 +186,7 @@ export function ClientTable({
                                             exit={{ opacity: 0, scale: 0.95 }}
                                             transition={{ duration: 0.2 }}
                                             className={cn(
-                                                "group hover:bg-muted/10 transition-colors",
+                                                "group hover:bg-white/5 transition-colors",
                                                 sortKey === "manual" ? "cursor-grab active:cursor-grabbing" : "cursor-default"
                                             )}
                                         >
@@ -210,7 +213,7 @@ export function ClientTable({
                                                     <Input
                                                         value={client.name}
                                                         onChange={(e) => updateClient(client.id, { name: e.target.value })}
-                                                        className="h-7 w-full min-w-[120px] text-xs px-2 bg-background/50 border-transparent focus:border-blue-500/50 focus:bg-background transition-all"
+                                                        className="h-8 w-full min-w-[120px] text-xs px-2.5 bg-black/20 border-border/40 focus:border-blue-500/50 focus:bg-background/80 transition-all font-medium"
                                                     />
                                                 </div>
                                             </td>
@@ -219,23 +222,23 @@ export function ClientTable({
                                                     value={client.wgIp ?? ""}
                                                     onChange={(e) => updateClient(client.id, { wgIp: e.target.value })}
                                                     placeholder={`10.20.0.${index + 101}`}
-                                                    className="h-7 text-xs font-mono px-2 bg-background/50 border-transparent focus:border-blue-500/50 focus:bg-background transition-all"
+                                                    className="h-8 text-xs font-mono px-2.5 bg-black/20 border-border/40 focus:border-blue-500/50 focus:bg-background/80 transition-all"
                                                 />
                                             </td>
                                             {!autoGenerateKeys && (
                                                 <td className="px-3 py-2">
-                                                    <div className="grid gap-1">
+                                                    <div className="grid gap-1.5 opacity-60 hover:opacity-100 transition-opacity focus-within:opacity-100">
                                                         <Input
                                                             value={client.privateKey ?? ""}
                                                             onChange={(e) => updateClient(client.id, { privateKey: e.target.value })}
                                                             placeholder="Priv Key"
-                                                            className="h-6 w-full font-mono text-[10px] px-2 bg-background/30 border-transparent focus:border-blue-500/30"
+                                                            className="h-7 w-full font-mono text-[10px] px-2 bg-black/40 border-border/20 focus:border-blue-500/40 focus:bg-black/80"
                                                         />
                                                         <Input
                                                             value={client.publicKey}
                                                             onChange={(e) => updateClient(client.id, { publicKey: e.target.value })}
                                                             placeholder="Pub Key"
-                                                            className="h-6 w-full font-mono text-[10px] px-2 bg-background/30 border-transparent focus:border-blue-500/30"
+                                                            className="h-7 w-full font-mono text-[10px] px-2 bg-black/40 border-border/20 focus:border-blue-500/40 focus:bg-black/80"
                                                         />
                                                     </div>
                                                 </td>
@@ -245,19 +248,19 @@ export function ClientTable({
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
-                                                        className="h-6 w-6 text-muted-foreground hover:text-blue-400"
+                                                        className="h-8 w-8 text-muted-foreground hover:text-blue-400 hover:bg-blue-400/10 transition-colors"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             handleShowQR(client);
                                                         }}
                                                         title="Show QR Code"
                                                     >
-                                                        <QrIcon className="h-3 w-3" />
+                                                        <QrIcon className="h-4 w-4" />
                                                     </Button>
                                                     {client.presharedKey && (
-                                                        <div className="relative group mr-2">
-                                                            <Key className="h-3.5 w-3.5 text-amber-500 cursor-help" />
-                                                            <div className="absolute right-0 top-6 hidden group-hover:block bg-popover text-popover-foreground text-[10px] p-2 rounded shadow-lg border z-50 whitespace-normal break-all w-48">
+                                                        <div className="relative group/tooltip mr-2">
+                                                            <Key className="h-4 w-4 text-emerald-500 cursor-help" />
+                                                            <div className="absolute right-0 -top-8 hidden group-hover/tooltip:block bg-black/90 backdrop-blur-md text-emerald-400 text-xs font-mono p-2 rounded shadow-lg border border-emerald-500/30 z-50 whitespace-nowrap">
                                                                 PSK: {client.presharedKey.substring(0, 8)}...
                                                             </div>
                                                         </div>
@@ -265,26 +268,26 @@ export function ClientTable({
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
-                                                        className="h-6 w-6 text-muted-foreground hover:text-blue-400"
+                                                        className="h-8 w-8 text-muted-foreground hover:text-blue-400 hover:bg-blue-400/10 transition-colors"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             generateClientKeys(client.id);
                                                         }}
-                                                        title="Generate Keys"
+                                                        title="Regenerate Keys"
                                                     >
-                                                        <Key className="h-3 w-3" />
+                                                        <Key className="h-4 w-4" />
                                                     </Button>
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
-                                                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             removeClient(client.id);
                                                         }}
-                                                        title="Delete"
+                                                        title="Delete Client"
                                                     >
-                                                        <Trash2 className="h-3 w-3" />
+                                                        <Trash2 className="h-4 w-4" />
                                                     </Button>
                                                 </div>
                                             </td>

@@ -119,23 +119,31 @@ export function resolveMeshState(payload: GeneratePayload) {
 
   const resolvedNodes = nodes.map((node, i) => {
     let res = { ...node, address: `${nodeIps[i]}/32` };
-    if (autoGenerateKeys && !node.publicKey && !node.privateKey) {
+
+    // Fallback: If no keys are provided, generate them even if autoGenerateKeys is false
+    // to prevent 'undefined' in config files.
+    if (!res.privateKey) {
       const keypair = generateKeypair();
-      res = { ...res, ...keypair };
-    } else if (node.privateKey && !node.publicKey) {
-      res = { ...res, publicKey: derivePublicKey(node.privateKey) };
+      res.privateKey = keypair.privateKey;
+      res.publicKey = keypair.publicKey;
+    } else if (!res.publicKey) {
+      res.publicKey = derivePublicKey(res.privateKey);
     }
+
     return res;
   });
 
   const resolvedClients = clients.map((client, i) => {
     let res = { ...client, address: `${clientIps[i]}/32` };
-    if (autoGenerateKeys && !client.publicKey && !client.privateKey) {
+
+    if (!res.privateKey) {
       const keypair = generateKeypair();
-      res = { ...res, ...keypair };
-    } else if (client.privateKey && !client.publicKey) {
-      res = { ...res, publicKey: derivePublicKey(client.privateKey) };
+      res.privateKey = keypair.privateKey;
+      res.publicKey = keypair.publicKey;
+    } else if (!res.publicKey) {
+      res.publicKey = derivePublicKey(res.privateKey);
     }
+
     return res;
   });
 
@@ -235,6 +243,85 @@ export function generateNodeConfig(
   return lines.join("\n");
 }
 
+export function generateSetupScript(nodeName: string, interfaceName: string, enableBabel: boolean): string {
+  return [
+    "#!/bin/bash",
+    "# WG-Mesh Auto-Generated Setup Script",
+    `IFACE="${interfaceName}"`,
+    "CONFIG_DIR=\"/etc/wireguard\"",
+    "",
+    `echo "[*] Configuring node: ${nodeName}"`,
+    "",
+    "if [ \"$EUID\" -ne 0 ]; then echo \"[!] Please run as root\"; exit 1; fi",
+    "",
+    "echo \"[*] Checking required packages...\"",
+    "if ! command -v wg &> /dev/null; then",
+    "  echo \"[*] Installing WireGuard tools...\"",
+    "  apt-get update && apt-get install -y wireguard-tools",
+    "fi",
+    "",
+    "echo \"[*] Backing up existing WireGuard config if it exists...\"",
+    "if [ -f \"$CONFIG_DIR/$IFACE.conf\" ]; then",
+    "  cp \"$CONFIG_DIR/$IFACE.conf\" \"$CONFIG_DIR/$IFACE.conf.bak\"",
+    "  echo \"[+] Backup created at $CONFIG_DIR/$IFACE.conf.bak\"",
+    "fi",
+    "",
+    "echo \"[*] Copying WireGuard config...\"",
+    "mkdir -p \"$CONFIG_DIR\"",
+    "cp \"$IFACE.conf\" \"$CONFIG_DIR/\"",
+    "chmod 600 \"$CONFIG_DIR/$IFACE.conf\"",
+    "",
+    enableBabel ? [
+      "if [ -f \"babeld.conf\" ]; then",
+      "  echo \"[*] Setting up Babel routing...\"",
+      "  apt-get update && apt-get install -y babeld > /dev/null 2>&1",
+      "  cp \"babeld.conf\" /etc/babeld.conf",
+      "  systemctl enable babeld && systemctl restart babeld",
+      "fi"
+    ].join("\n") : "",
+    "",
+    "echo \"[*] Reloading/Restarting WireGuard service...\"",
+    "systemctl enable wg-quick@\"$IFACE\"",
+    "systemctl restart wg-quick@\"$IFACE\"",
+    "",
+    "echo \"[+] Setup complete!\"",
+  ].filter(Boolean).join("\n");
+}
+
+export function generateBabelConfig(interfaceName: string, networkCidr: string): string {
+  return [
+    `interface ${interfaceName} type tunnel`,
+    "hello-interval 1",
+    "update-interval 4",
+    "rtt-cost 256",
+    "rtt-min 10",
+    "rtt-max 120",
+    "",
+    "redistribute local",
+    `redistribute ip ${networkCidr}`
+  ].join("\n");
+}
+
+export function composeNodeAssets(
+  nodeName: string,
+  interfaceName: string,
+  enableBabel: boolean,
+  networkCidr: string,
+  nodeConfig: string
+): { name: string; content: string }[] {
+  const assets: { name: string; content: string }[] = [
+    { name: `${safeName(interfaceName)}.conf`, content: nodeConfig }
+  ];
+
+  if (enableBabel) {
+    assets.push({ name: "babeld.conf", content: generateBabelConfig(interfaceName, networkCidr) });
+  }
+
+  assets.push({ name: "setup.sh", content: generateSetupScript(nodeName, interfaceName, enableBabel) });
+
+  return assets;
+}
+
 export async function generateZip(payload: GeneratePayload) {
   const {
     resolvedNodes,
@@ -304,54 +391,10 @@ export async function generateZip(payload: GeneratePayload) {
       getPsk
     );
 
-    if (enableBabel) {
-      const babelConfig = [
-        `interface ${interfaceName} type tunnel`,
-        "hello-interval 1",
-        "update-interval 4",
-        "rtt-cost 256",
-        "rtt-min 10",
-        "rtt-max 120",
-        "",
-        "redistribute local",
-        `redistribute ip ${networkCidr}`
-      ].join("\n");
-      zip.file(`nodes/${safeName(node.name)}/babeld.conf`, babelConfig);
-    }
-
-    zip.file(`nodes/${safeName(node.name)}/${interfaceFilename}`, nodeConfig);
-
-    // Add setup script for nodes
-    const setupScript = [
-      "#!/bin/bash",
-      "# WG-Mesh Auto-Generated Setup Script",
-      `IFACE="${interfaceName}"`,
-      "CONFIG_DIR=\"/etc/wireguard\"",
-      "",
-      "echo \"[*] Configuring node: ${node.name}\"",
-      "if [ \"$EUID\" -ne 0 ]; then echo \"[!] Please run as root\"; exit 1; fi",
-      "",
-      "echo \"[*] Copying WireGuard config...\"",
-      "cp \"$IFACE.conf\" \"$CONFIG_DIR/\"",
-      "chmod 600 \"$CONFIG_DIR/$IFACE.conf\"",
-      "",
-      enableBabel ? [
-        "if [ -f \"babeld.conf\" ]; then",
-        "  echo \"[*] Setting up Babel routing...\"",
-        "  apt-get update && apt-get install -y babeld > /dev/null",
-        "  cp \"babeld.conf\" /etc/babeld.conf",
-        "  systemctl enable babeld && systemctl restart babeld",
-        "fi"
-      ].join("\n") : "",
-      "",
-      "echo \"[*] Starting WireGuard interface...\"",
-      "wg-quick up \"$IFACE\"",
-      "systemctl enable wg-quick@\"$IFACE\"",
-      "",
-      "echo \"[+] Setup complete!\"",
-    ].filter(Boolean).join("\n");
-
-    zip.file(`nodes/${safeName(node.name)}/setup.sh`, setupScript);
+    const assets = composeNodeAssets(node.name, interfaceName, !!enableBabel, networkCidr, nodeConfig);
+    assets.forEach(asset => {
+      zip.file(`nodes/${safeName(node.name)}/${asset.name}`, asset.content);
+    });
 
     (manifest.nodes as unknown[]).push({
       name: node.name,
@@ -472,54 +515,6 @@ export function generateNodeAssets(
     },
     getPsk
   );
-  assets.push({ name: interfaceFilename, content: nodeConfig });
-
-  // 2. Babel Config
-  if (enableBabel) {
-    const babelConfig = [
-      `interface ${interfaceName} type tunnel`,
-      "hello-interval 1",
-      "update-interval 4",
-      "rtt-cost 256",
-      "rtt-min 10",
-      "rtt-max 120",
-      "",
-      "redistribute local",
-      `redistribute ip ${p.networkCidr}`
-    ].join("\n");
-    assets.push({ name: "babeld.conf", content: babelConfig });
-  }
-
-  // 3. Setup Script
-  const setupScript = [
-    "#!/bin/bash",
-    "# WG-Mesh Auto-Generated Setup Script",
-    `IFACE="${interfaceName}"`,
-    "CONFIG_DIR=\"/etc/wireguard\"",
-    "",
-    `echo "[*] Configuring node: ${node.name}"`,
-    "if [ \"$EUID\" -ne 0 ]; then echo \"[!] Please run as root\"; exit 1; fi",
-    "",
-    "echo \"[*] Copying WireGuard config...\"",
-    "cp \"$IFACE.conf\" \"$CONFIG_DIR/\"",
-    "chmod 600 \"$CONFIG_DIR/$IFACE.conf\"",
-    "",
-    enableBabel ? [
-      "if [ -f \"babeld.conf\" ]; then",
-      "  echo \"[*] Setting up Babel routing...\"",
-      "  apt-get update && apt-get install -y babeld > /dev/null",
-      "  cp \"babeld.conf\" /etc/babeld.conf",
-      "  systemctl enable babeld && systemctl restart babeld",
-      "fi"
-    ].join("\n") : "",
-    "",
-    "echo \"[*] Starting WireGuard interface...\"",
-    "wg-quick up \"$IFACE\"",
-    "systemctl enable wg-quick@\"$IFACE\"",
-    "",
-    "echo \"[+] Setup complete!\"",
-  ].filter(Boolean).join("\n");
-  assets.push({ name: "setup.sh", content: setupScript });
-
-  return assets;
+  // 2. Compose all assets (Config, Babel, Setup)
+  return composeNodeAssets(node.name, interfaceName, !!enableBabel, p.networkCidr, nodeConfig);
 }

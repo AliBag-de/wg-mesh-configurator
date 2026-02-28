@@ -1,0 +1,18 @@
+app/page.tsx(601,17): error TS2322: Type '{ networkCidr: string; setNetworkCidr: (value: string) => void; interfaceName: string; setInterfaceName: (value: string) => void; listenPort: any; setListenPort: any; endpointVersion: EndpointVersion; ... 4 more ...; setMtu: (value: number) => void; }' is not assignable to type 'IntrinsicAttributes & NetworkSettingsProps'.
+  Property 'listenPort' does not exist on type 'IntrinsicAttributes & NetworkSettingsProps'.
+app/page.tsx(601,29): error TS2304: Cannot find name 'listenPort'.
+app/page.tsx(602,32): error TS2304: Cannot find name 'setListenPort'.
+app/page.tsx(610,16): error TS2739: Type '{}' is missing the following properties from type 'GatewaySelectionProps': nodeNames, gatewayNodeNames, toggleGateway
+components/features/NetworkSettings.tsx(122,29): error TS2322: Type '{ id: string; checked: boolean; onCheckedChange: (checked: any) => void; }' is not assignable to type 'IntrinsicAttributes & InputHTMLAttributes<HTMLInputElement> & RefAttributes<HTMLInputElement>'.
+  Property 'onCheckedChange' does not exist on type 'IntrinsicAttributes & InputHTMLAttributes<HTMLInputElement> & RefAttributes<HTMLInputElement>'.
+components/features/NetworkSettings.tsx(122,47): error TS7006: Parameter 'checked' implicitly has an 'any' type.
+components/features/NetworkSettings.tsx(133,29): error TS2322: Type '{ id: string; checked: boolean; onCheckedChange: (checked: any) => void; }' is not assignable to type 'IntrinsicAttributes & InputHTMLAttributes<HTMLInputElement> & RefAttributes<HTMLInputElement>'.
+  Property 'onCheckedChange' does not exist on type 'IntrinsicAttributes & InputHTMLAttributes<HTMLInputElement> & RefAttributes<HTMLInputElement>'.
+components/features/NetworkSettings.tsx(133,47): error TS7006: Parameter 'checked' implicitly has an 'any' type.
+components/features/NetworkSettings.tsx(144,29): error TS2322: Type '{ id: string; checked: boolean; onCheckedChange: (checked: any) => void; }' is not assignable to type 'IntrinsicAttributes & InputHTMLAttributes<HTMLInputElement> & RefAttributes<HTMLInputElement>'.
+  Property 'onCheckedChange' does not exist on type 'IntrinsicAttributes & InputHTMLAttributes<HTMLInputElement> & RefAttributes<HTMLInputElement>'.
+components/features/NetworkSettings.tsx(144,47): error TS7006: Parameter 'checked' implicitly has an 'any' type.
+components/features/SummarySidebar.tsx(22,5): error TS2300: Duplicate identifier 'handleRemoteDeploy'.
+components/features/SummarySidebar.tsx(23,5): error TS2300: Duplicate identifier 'handleRemoteDeploy'.
+components/features/SummarySidebar.tsx(42,5): error TS2300: Duplicate identifier 'handleRemoteDeploy'.
+components/features/SummarySidebar.tsx(43,5): error TS2300: Duplicate identifier 'handleRemoteDeploy'.

@@ -53,7 +53,7 @@ export function DashboardLayout({ children, sidebarProps }: DashboardLayoutProps
                     </div>
                 </header>
 
-                <div className="flex-1 min-h-0 relative flex flex-col p-4 lg:p-8">
+                <div className="flex-1 min-h-0 relative flex flex-col p-4 lg:px-8 lg:pt-2 lg:pb-2">
                     {children}
                 </div>
             </main>

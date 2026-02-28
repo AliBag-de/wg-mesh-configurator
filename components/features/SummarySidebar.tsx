@@ -20,7 +20,6 @@ interface SummarySidebarProps {
     handleSubmit: () => void;
     handleDeploy: () => void;
     handleRemoteDeploy: () => void;
-    handleRemoteDeploy: () => void;
     resetForm: () => void;
 }
 
@@ -39,7 +38,6 @@ export function SummarySidebar({
     fillGeneratedKeys,
     handleSubmit,
     handleDeploy,
-    handleRemoteDeploy,
     handleRemoteDeploy,
     resetForm,
 }: SummarySidebarProps) {
@@ -129,7 +127,7 @@ export function SummarySidebar({
             </Card>
 
             {/* Actions */}
-            <Card className="border-border/50 bg-card/80 backdrop-blur-md shadow-2xl border-primary/20">
+            <Card className="bg-card/80 backdrop-blur-md shadow-2xl border border-primary/20">
                 <CardContent className="p-4 space-y-3">
                     <Button
                         className="w-full"

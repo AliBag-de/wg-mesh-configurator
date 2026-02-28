@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { NodeInput } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Key, Plus, Trash2, Server, GripVertical, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Key, Plus, Trash2, Server, GripVertical, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw } from "lucide-react";
 import { EndpointVersion } from "@/lib/types";
 import { AnimatePresence, motion, Reorder } from "framer-motion";
 import { colorForKey } from "@/lib/color";
@@ -67,29 +67,31 @@ export function NodeTable({
         return sortDir === "asc" ? <ArrowUp className="h-3 w-3 text-primary" /> : <ArrowDown className="h-3 w-3 text-primary" />;
     };
     return (
-        <div className="rounded-lg border bg-card/50 backdrop-blur-sm overflow-hidden">
-            {/* ... Header ... */}
-            <div className="flex items-center justify-between p-3 border-b bg-muted/20">
-                <div className="flex items-center gap-2">
-                    <Server className="h-4 w-4 text-primary" />
-                    <h3 className="text-sm font-semibold tracking-tight">Nodes</h3>
-                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px] rounded-sm">
+        <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-md shadow-lg overflow-hidden relative group">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
+            <div className="flex items-center justify-between p-4 border-b border-border/40 bg-secondary/30 relative z-10">
+                <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/20">
+                        <Server className="h-4 w-4 text-emerald-500" />
+                    </div>
+                    <h3 className="text-sm font-semibold tracking-wide">Server Nodes</h3>
+                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px] rounded-sm bg-primary/20 text-primary border-transparent">
                         {nodes.length}
                     </Badge>
                 </div>
-                <Button onClick={addNode} size="sm" variant="outline" className="h-7 text-xs gap-1.5">
-                    <Plus className="h-3 w-3" /> Add
+                <Button onClick={addNode} size="sm" variant="outline" className="h-8 text-xs gap-1.5 bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 shadow-[0_0_10px_rgba(16,185,129,0.1)] transition-all">
+                    <Plus className="h-3.5 w-3.5" /> Add Node
                 </Button>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto relative z-10">
                 {nodes.length === 0 ? (
-                    <div className="p-8 text-center text-muted-foreground text-sm">
-                        No nodes found. Add one to get started.
+                    <div className="p-12 text-center text-muted-foreground/70 text-sm italic bg-black/10 border-t border-dashed border-border/40">
+                        No nodes deployed. Add a server node to begin orchestrating the network.
                     </div>
                 ) : (
                     <table className="w-full text-xs text-left">
-                        <thead className="bg-muted/10 text-muted-foreground font-medium border-b select-none">
+                        <thead className="bg-black/20 text-muted-foreground font-medium border-b border-border/40 select-none">
                             <tr>
                                 <th
                                     className="px-3 py-2 w-10 text-center cursor-pointer hover:text-primary transition-colors"
@@ -178,7 +180,7 @@ export function NodeTable({
                                             exit={{ opacity: 0, scale: 0.95 }}
                                             transition={{ duration: 0.2 }}
                                             className={cn(
-                                                "group hover:bg-muted/10 transition-colors",
+                                                "group hover:bg-white/5 transition-colors",
                                                 sortKey === "manual" ? "cursor-grab active:cursor-grabbing" : "cursor-default"
                                             )}
                                         >
@@ -205,7 +207,7 @@ export function NodeTable({
                                                     <Input
                                                         value={node.name}
                                                         onChange={(e) => updateNode(node.id, { name: e.target.value })}
-                                                        className="h-7 w-full min-w-[80px] text-xs px-2 bg-background/50 border-transparent focus:border-primary/50 focus:bg-background transition-all"
+                                                        className="h-8 w-full min-w-[90px] text-xs px-2.5 bg-black/20 border-border/40 focus:border-primary/50 focus:bg-background/80 transition-all font-medium"
                                                     />
                                                 </div>
                                             </td>
@@ -215,11 +217,11 @@ export function NodeTable({
                                                         value={node.endpoint}
                                                         onChange={(e) => updateNode(node.id, { endpoint: e.target.value })}
                                                         placeholder="IPv6 Endpoint"
-                                                        className="h-7 text-xs font-mono px-2 bg-background/50 border-transparent focus:border-primary/50 focus:bg-background transition-all"
+                                                        className="h-8 text-xs font-mono px-2.5 bg-black/20 border-border/40 focus:border-primary/50 focus:bg-background/80 transition-all"
                                                     />
                                                     {node.endpoint.includes(":") && !node.endpoint.includes(".") && (
-                                                        <span className="text-[10px] text-muted-foreground whitespace-nowrap" title="Detected as IPv6">
-                                                            [IPv6]
+                                                        <span className="text-[10px] text-primary/70 font-semibold bg-primary/10 px-1 py-0.5 rounded whitespace-nowrap border border-primary/20" title="Detected as IPv6">
+                                                            IPv6
                                                         </span>
                                                     )}
                                                 </div>
@@ -239,9 +241,9 @@ export function NodeTable({
                                                             if (Object.keys(patch).length > 0) updateNode(node.id, patch);
                                                         }
                                                     }}
-                                                    placeholder="IPv4 or Alias"
+                                                    placeholder="IPv4 / URI"
                                                     list={`ssh-hosts-${node.id}`}
-                                                    className="h-7 text-xs font-mono px-2 bg-background/50 border-transparent focus:border-primary/50 focus:bg-background transition-all"
+                                                    className="h-8 text-xs font-mono px-2.5 bg-black/20 border-border/40 focus:border-primary/50 focus:bg-background/80 transition-all"
                                                 />
                                                 <datalist id={`ssh-hosts-${node.id}`}>
                                                     {sshHosts.map(h => (
@@ -254,7 +256,7 @@ export function NodeTable({
                                                     value={node.sshUser ?? ""}
                                                     onChange={(e) => updateNode(node.id, { sshUser: e.target.value })}
                                                     placeholder="root"
-                                                    className="h-7 text-xs font-mono px-2 bg-background/50 border-transparent focus:border-primary/50 focus:bg-background transition-all"
+                                                    className="h-8 text-xs font-mono px-2.5 bg-black/20 border-border/40 focus:border-primary/50 focus:bg-background/80 transition-all"
                                                 />
                                             </td>
                                             <td className="px-3 py-2">
@@ -262,7 +264,7 @@ export function NodeTable({
                                                     type="number"
                                                     value={node.sshPort ?? 22}
                                                     onChange={(e) => updateNode(node.id, { sshPort: Number(e.target.value) })}
-                                                    className="h-7 text-xs font-mono px-2 bg-background/50 border-transparent focus:border-primary/50 focus:bg-background transition-all"
+                                                    className="h-8 text-xs font-mono px-2.5 bg-black/20 border-border/40 focus:border-primary/50 focus:bg-background/80 transition-all"
                                                 />
                                             </td>
                                             <td className="px-3 py-2">
@@ -270,7 +272,7 @@ export function NodeTable({
                                                     value={node.wgIp ?? ""}
                                                     onChange={(e) => updateNode(node.id, { wgIp: e.target.value })}
                                                     placeholder={`10.20.0.${index + 1}`}
-                                                    className="h-7 text-xs font-mono px-2 bg-background/50 border-transparent focus:border-primary/50 focus:bg-background transition-all"
+                                                    className="h-8 text-xs font-mono px-2.5 bg-black/20 border-border/40 focus:border-primary/50 focus:bg-background/80 transition-all"
                                                 />
                                             </td>
                                             <td className="px-3 py-2 w-[100px]">
@@ -278,33 +280,33 @@ export function NodeTable({
                                                     type="number"
                                                     value={node.listenPort}
                                                     onChange={(e) => updateNode(node.id, { listenPort: Number(e.target.value) })}
-                                                    className="h-7 text-xs font-mono text-center px-1 bg-background/50 border-transparent focus:border-primary/50 focus:bg-background transition-all"
+                                                    className="h-8 text-xs font-mono text-center px-1.5 bg-black/20 border-border/40 focus:border-primary/50 focus:bg-background/80 transition-all"
                                                 />
                                             </td>
                                             {!autoGenerateKeys && (
                                                 <td className="px-3 py-2">
-                                                    <div className="grid gap-1">
+                                                    <div className="grid gap-1.5 opacity-60 hover:opacity-100 transition-opacity focus-within:opacity-100">
                                                         <Input
                                                             value={node.privateKey ?? ""}
                                                             onChange={(e) => updateNode(node.id, { privateKey: e.target.value })}
                                                             placeholder="Priv Key"
-                                                            className="h-6 w-full font-mono text-[10px] px-2 bg-background/30 border-transparent focus:border-primary/30"
+                                                            className="h-7 w-full font-mono text-[10px] px-2 bg-black/40 border-border/20 focus:border-primary/40 focus:bg-black/80"
                                                         />
                                                         <Input
                                                             value={node.publicKey}
                                                             onChange={(e) => updateNode(node.id, { publicKey: e.target.value })}
                                                             placeholder="Pub Key"
-                                                            className="h-6 w-full font-mono text-[10px] px-2 bg-background/30 border-transparent focus:border-primary/30"
+                                                            className="h-7 w-full font-mono text-[10px] px-2 bg-black/40 border-border/20 focus:border-primary/40 focus:bg-black/80"
                                                         />
                                                     </div>
                                                 </td>
                                             )}
                                             <td className="px-3 py-2 w-[100px] text-right">
-                                                <div className="flex items-center justify-end gap-1">
+                                                <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                                                     {node.presharedKey && (
-                                                        <div className="relative group mr-2">
-                                                            <Key className="h-3.5 w-3.5 text-amber-500 cursor-help" />
-                                                            <div className="absolute  right-0 -top-1 hidden group-hover:block bg-popover text-popover-foreground text-[10px] p-2 rounded shadow-lg border z-50 whitespace-normal break-all w-48">
+                                                        <div className="relative group/tooltip mr-2">
+                                                            <Key className="h-4 w-4 text-emerald-500 cursor-help" />
+                                                            <div className="absolute right-0 -top-8 hidden group-hover/tooltip:block bg-black/90 backdrop-blur-md text-emerald-400 text-xs font-mono p-2 rounded shadow-lg border border-emerald-500/30 z-50 whitespace-nowrap">
                                                                 PSK: {node.presharedKey.substring(0, 8)}...
                                                             </div>
                                                         </div>
@@ -312,26 +314,26 @@ export function NodeTable({
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
-                                                        className="h-6 w-6 text-muted-foreground hover:text-primary"
+                                                        className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             generateNodeKeys(node.id);
                                                         }}
-                                                        title="Generate Keys"
+                                                        title="Regenerate Keys"
                                                     >
-                                                        <Key className="h-3.5 w-3.5" />
+                                                        <RefreshCw className="h-4 w-4" />
                                                     </Button>
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
-                                                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             removeNode(node.id);
                                                         }}
-                                                        title="Delete"
+                                                        title="Delete Server Node"
                                                     >
-                                                        <Trash2 className="h-3 w-3" />
+                                                        <Trash2 className="h-4 w-4" />
                                                     </Button>
                                                 </div>
                                             </td>

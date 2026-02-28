@@ -14,7 +14,23 @@ import { DashboardLayout } from "@/components/features/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { GeneratePayload } from "@/lib/types";
-import { Globe, RefreshCw, User, Hash, Server, ShieldAlert, Terminal, CheckCircle2, Zap } from "lucide-react";
+import {
+  Trash2,
+  Download,
+  Plus,
+  Network,
+  DownloadCloud,
+  Terminal,
+  Globe,
+  Settings,
+  RefreshCw,
+  Server,
+  User,
+  Hash,
+  Zap,
+  CheckCircle2,
+  ShieldAlert
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -66,6 +82,11 @@ export default function HomePage() {
   const [busy, setBusy] = useState(false);
   const [sshHosts, setSshHosts] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<"list" | "topology">("list");
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     fetch("/api/ssh-hosts")
@@ -324,18 +345,48 @@ export default function HomePage() {
         body: JSON.stringify({ payload: enrichedPayload, nodeName: deployNodeName }),
       });
 
-      const data = await res.json();
       if (!res.ok) {
-        setRemoteLog((prev) => prev + (data.log || `Error: ${data.error}`));
-        throw new Error(data.error || "Remote installation failed");
+        throw new Error("Network error or server unavailable.");
       }
 
-      setRemoteLog((prev) => prev + (data.log || "Successfully completed."));
-      toast.success(`${deployNodeName} successfully installed on remote server!`);
-      // Keep dialog open to show logs
-    } catch (err) {
+      if (res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          let eventEndIndex;
+          while ((eventEndIndex = buffer.indexOf('\n\n')) !== -1) {
+            const eventStr = buffer.slice(0, eventEndIndex);
+            buffer = buffer.slice(eventEndIndex + 2);
+
+            if (eventStr.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(eventStr.slice(6));
+                if (data.log) {
+                  setRemoteLog((prev) => prev + data.log);
+                }
+                if (data.status === 'error' || data.error) {
+                  throw new Error(data.error || "Remote installation failed");
+                }
+              } catch (e: any) {
+                // Ignore parse errors, handle thrown execution errors
+                if (e.message) throw e;
+              }
+            }
+          }
+        }
+        toast.success(`${deployNodeName} successfully installed on remote server!`);
+      }
+
+    } catch (err: any) {
       console.error(err);
-      toast.error(err instanceof Error ? err.message : "Remote installation error");
+      toast.error(err.message || "Remote installation error");
     } finally {
       setBusy(false);
     }
@@ -390,15 +441,48 @@ export default function HomePage() {
           body: JSON.stringify({ payload, nodeName: node.name }),
         });
 
-        const data = await res.json();
-        if (!res.ok) {
-          setBatchNodeStatuses(prev => ({ ...prev, [node.id]: "error" }));
-          setBatchLogs(prev => prev + `[ERROR] ${node.name}:\n${data.log || data.error}\n`);
-        } else {
-          setBatchNodeStatuses(prev => ({ ...prev, [node.id]: "success" }));
-          setBatchLogs(prev => prev + `[SUCCESS] ${node.name} package transferred.\n`);
-          completed++;
+        if (!res.ok) throw new Error("Server error");
+
+        if (res.body) {
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          let nodeSuccess = true;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            let eventEndIndex;
+            while ((eventEndIndex = buffer.indexOf('\n\n')) !== -1) {
+              const eventStr = buffer.slice(0, eventEndIndex);
+              buffer = buffer.slice(eventEndIndex + 2);
+
+              if (eventStr.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(eventStr.slice(6));
+                  if (data.log) {
+                    setBatchLogs((prev) => prev + data.log);
+                  }
+                  if (data.status === 'error' || data.error) {
+                    nodeSuccess = false;
+                    throw new Error(data.error || "Deployment failed");
+                  }
+                } catch (e: any) {
+                  if (e.message) throw e;
+                }
+              }
+            }
+          }
+
+          if (nodeSuccess) {
+            setBatchNodeStatuses(prev => ({ ...prev, [node.id]: "success" }));
+            setBatchLogs(prev => prev + `[SUCCESS] ${node.name} completed successfully.\n`);
+            completed++;
+          }
         }
+
       } catch (err: any) {
         setBatchNodeStatuses(prev => ({ ...prev, [node.id]: "error" }));
         setBatchLogs(prev => prev + `[FATAL] ${node.name}: ${err.message}\n`);
@@ -423,6 +507,7 @@ export default function HomePage() {
   const sidebarProps = {
     nodesCount: nodes.length,
     clientsCount: clients.length,
+    gatewayCount: gatewayNodeNames.length,
     gatewayNodeNames,
     busy,
     fillGeneratedKeys,
@@ -452,81 +537,102 @@ export default function HomePage() {
     resetForm,
   };
 
+  if (!isMounted) {
+    return null;
+  }
+
   return (
     <DashboardLayout sidebarProps={sidebarProps}>
-      <Tabs defaultValue="list" className="flex-1 flex flex-col min-h-0" onValueChange={(v) => setViewMode(v as "list" | "topology")}>
-        <div className="flex items-center justify-between mb-2 shrink-0">
-          <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
-          <TabsList className="grid w-[240px] grid-cols-2">
-            <TabsTrigger value="list">List</TabsTrigger>
-            <TabsTrigger value="topology">Topology</TabsTrigger>
-          </TabsList>
+      {/* Background glow effects for the main content area */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden flex justify-center z-0">
+        <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-primary/5 blur-[120px]" />
+        <div className="absolute top-[60%] -right-[10%] w-[40%] h-[60%] rounded-full bg-blue-500/5 blur-[120px]" />
+      </div>
+
+      <div className="max-w-[1600px] w-full mx-auto space-y-2 relative z-10 flex flex-col h-full">
+        <div className="flex flex-col md:flex-row md:items-center justify-between shrink-0 border-b border-border/40 pb-2 pt-2">
+          <div>
+            <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-3 text-white">
+              <Network className="h-8 w-8 text-primary drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]" />
+              WG Mesh <span className="text-primary font-light">Configurator</span>
+            </h1>
+            <p className="text-muted-foreground mt-2 text-sm font-medium tracking-wide">
+              Secure overlay network orchestration and deployment
+            </p>
+          </div>
         </div>
 
-        <TabsContent value="list" className="flex-1 min-h-0 overflow-y-auto p-1 pb-20 space-y-2">
-          {/* 2-Column Grid for Top Section */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 shrink-0">
-            <NetworkSettings
-              networkCidr={networkCidr}
-              setNetworkCidr={setNetworkCidr}
-              interfaceName={interfaceName}
-              setInterfaceName={setInterfaceName}
-              endpointVersion={endpointVersion}
-              setEndpointVersion={setEndpointVersion}
-              persistentKeepalive={persistentKeepalive}
-              setPersistentKeepalive={setPersistentKeepalive}
-              includeIpForwarding={includeIpForwarding}
-              setIncludeIpForwarding={setIncludeIpForwarding}
-              enableBabel={enableBabel}
-              setEnableBabel={setEnableBabel}
-              autoGenerateKeys={autoGenerateKeys}
-              setAutoGenerateKeys={setAutoGenerateKeys}
-              mtu={mtu}
-              setMtu={setMtu}
-            />
-            <GatewaySelection
-              nodeNames={nodes.map(n => n.name)}
-              gatewayNodeNames={gatewayNodeNames}
-              toggleGateway={toggleGateway}
-            />
+        <Tabs defaultValue="list" className="flex-1 flex flex-col min-h-0 space-y-2" onValueChange={(v) => setViewMode(v as "list" | "topology")}>
+          <div className="flex items-center justify-between shrink-0">
+            <h2 className="text-xl font-bold tracking-tight text-white/90">Dashboard Overview</h2>
+            <TabsList className="grid w-[240px] grid-cols-2 bg-black/40 border border-border/50">
+              <TabsTrigger value="list" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary">List View</TabsTrigger>
+              <TabsTrigger value="topology" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary">Topology</TabsTrigger>
+            </TabsList>
           </div>
 
-          {/* Nodes Table */}
-          <div className="shrink-0">
-            <NodeTable
-              nodes={nodes}
-              addNode={addNode}
-              removeNode={removeNode}
-              updateNode={updateNode}
-              generateNodeKeys={generateNodeKeys}
-              reorderNodes={reorderNodes}
-              autoGenerateKeys={autoGenerateKeys}
-              endpointVersion={endpointVersion}
-              sshHosts={sshHosts}
-            />
-          </div>
+          <TabsContent value="list" className="flex-1 min-h-0 overflow-y-auto pr-2 pb-20 space-y-6 custom-scrollbar focus-visible:outline-none">
+            {/* 2-Column Grid for Top Section */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 shrink-0">
+              <NetworkSettings
+                networkCidr={networkCidr}
+                setNetworkCidr={setNetworkCidr}
+                interfaceName={interfaceName}
+                setInterfaceName={setInterfaceName}
+                endpointVersion={endpointVersion}
+                setEndpointVersion={setEndpointVersion}
+                persistentKeepalive={persistentKeepalive}
+                setPersistentKeepalive={setPersistentKeepalive}
+                includeIpForwarding={includeIpForwarding}
+                setIncludeIpForwarding={setIncludeIpForwarding}
+                enableBabel={enableBabel}
+                setEnableBabel={setEnableBabel}
+                autoGenerateKeys={autoGenerateKeys}
+                setAutoGenerateKeys={setAutoGenerateKeys}
+                mtu={mtu}
+                setMtu={setMtu}
+              />
+              <GatewaySelection
+                nodeNames={nodes.map((n) => n.name)}
+                gatewayNodeNames={gatewayNodeNames}
+                toggleGateway={toggleGateway}
+              />
+            </div>
 
-          {/* Clients Table */}
-          <div className="shrink-0">
-            <ClientTable
-              clients={clients}
-              addClient={addClient}
-              removeClient={removeClient}
-              updateClient={updateClient}
-              generateClientKeys={generateClientKeys}
-              reorderClients={reorderClients}
-              autoGenerateKeys={autoGenerateKeys}
-            />
-          </div>
-        </TabsContent>
+            {/* Tables */}
+            <div className="space-y-6 shrink-0">
+              <NodeTable
+                nodes={nodes}
+                addNode={addNode}
+                removeNode={removeNode}
+                updateNode={updateNode}
+                generateNodeKeys={generateNodeKeys}
+                reorderNodes={reorderNodes}
+                autoGenerateKeys={autoGenerateKeys}
+                endpointVersion={endpointVersion}
+                sshHosts={sshHosts}
+              />
 
-        <TabsContent value="topology" className="flex-1 min-h-0 overflow-hidden">
-          <TopologyView nodes={nodes} clients={clients} gatewayNodeNames={gatewayNodeNames} />
-        </TabsContent>
-      </Tabs>
+              <ClientTable
+                clients={clients}
+                addClient={addClient}
+                removeClient={removeClient}
+                updateClient={updateClient}
+                generateClientKeys={generateClientKeys}
+                reorderClients={reorderClients}
+                autoGenerateKeys={autoGenerateKeys}
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="topology" className="flex-1 min-h-0 border rounded-xl overflow-hidden bg-black/20 backdrop-blur-md shadow-xl border-border/40 focus-visible:outline-none">
+            <TopologyView nodes={nodes} clients={clients} gatewayNodeNames={gatewayNodeNames} />
+          </TabsContent>
+        </Tabs>
+      </div>
 
       <Dialog open={isDeployOpen} onOpenChange={setIsDeployOpen}>
-        <DialogContent className="sm:max-w-[425px] bg-amber-50 backdrop-blur-none! border-primary/60 shadow-2xl">
+        <DialogContent className="sm:max-w-[425px] bg-card/90 backdrop-blur-xl border-primary/20 shadow-2xl">
           <DialogHeader>
             <DialogTitle>Install on This Server</DialogTitle>
             <DialogDescription>
@@ -539,9 +645,9 @@ export default function HomePage() {
                 Node Selection
               </Label>
               <Select id="node-select" value={deployNodeName} onChange={(e) => setDeployNodeName(e.target.value)}>
-                <option value="" disabled>Select target node...</option>
+                <option value="" disabled className="bg-background">Select target node...</option>
                 {nodes.map((node) => (
-                  <option key={node.id} value={node.name}>
+                  <option key={node.id} value={node.name} className="bg-background">
                     {node.name} {node.endpoint ? `(${node.endpoint})` : "(No endpoint)"}
                   </option>
                 ))}
@@ -549,13 +655,13 @@ export default function HomePage() {
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="ghost" onClick={() => setIsDeployOpen(false)} disabled={busy} className="hover:bg-destructive/10 hover:text-destructive">
+            <Button variant="ghost" onClick={() => setIsDeployOpen(false)} disabled={busy} className="hover:bg-destructive/10 hover:text-destructive transition-colors">
               Cancel
             </Button>
             <Button
               onClick={executeDeploy}
               disabled={busy || !deployNodeName}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-900/20 active:scale-95 transition-all px-8"
+              className="bg-primary hover:bg-primary/80 text-primary-foreground shadow-lg shadow-primary/20 hover:shadow-primary/40 active:scale-95 transition-all px-8"
             >
               {busy ? "Applying..." : "Start Installation"}
             </Button>
@@ -564,30 +670,33 @@ export default function HomePage() {
       </Dialog>
 
       <Dialog open={isRemoteOpen} onOpenChange={setIsRemoteOpen}>
-        <DialogContent className="sm:max-w-[700px] max-h-[90vh] flex flex-col bg-amber-50 backdrop-blur-none! shadow-2xl border-blue-500/70 transition-all">
-          <DialogHeader className="border-b pb-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Globe className="h-5 w-5 text-blue-600" />
-              <DialogTitle className="text-xl font-bold">Remote Server Installation (SSH)</DialogTitle>
-            </div>
-            <DialogDescription className="text-muted-foreground/80">
-              Transfer this node's configuration directly to your remote server via SSH.
-              <span className="flex items-center gap-1.5 mt-2 font-medium text-amber-700 bg-amber-100/50 p-2 rounded-md border border-amber-200">
-                <ShieldAlert className="h-4 w-4 shrink-0" />
-                Important: Passwordless SSH key access must be configured on the target.
-              </span>
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] flex flex-col bg-background/95 backdrop-blur-2xl shadow-2xl border-primary/30 transition-all rounded-xl overflow-hidden p-0">
+          <div className="p-6 pb-2 relative z-10">
+            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent"></div>
+            <DialogHeader className="border-b border-border/50 pb-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Globe className="h-5 w-5 text-primary drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                <DialogTitle className="text-xl font-bold tracking-tight">Remote Server Connection</DialogTitle>
+              </div>
+              <DialogDescription className="text-muted-foreground/80">
+                Transfer this node's configuration directly to your remote server via SSH.
+                <span className="flex items-center gap-1.5 mt-3 text-xs font-medium text-amber-500/90 bg-amber-500/10 p-2.5 rounded-lg border border-amber-500/20">
+                  <ShieldAlert className="h-4 w-4 shrink-0" />
+                  Passwordless SSH key access must be pre-configured on the target.
+                </span>
+              </DialogDescription>
+            </DialogHeader>
+          </div>
 
-          <div className="grid gap-4 py-2 overflow-y-auto pr-2">
-            <div className="flex flex-col gap-5 bg-slate-900/5 p-4 rounded-xl border border-border/50">
-              <div className="space-y-2">
-                <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 ml-1">
-                  <Server className="h-3 w-3 text-blue-500" />
-                  Target Node Selection
+          <div className="px-6 py-2 overflow-y-auto min-h-[100px] max-h-[60vh] custom-scrollbar">
+            <div className="flex flex-col gap-5 p-5 mb-4 rounded-xl border border-white/5 bg-white/5 backdrop-blur-sm shadow-inner">
+              <div className="space-y-2.5">
+                <Label className="text-[10px] font-bold uppercase tracking-widest text-primary flex items-center gap-1.5 ml-1">
+                  <Server className="h-3.5 w-3.5" />
+                  Target Node
                 </Label>
                 <select
-                  className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-medium"
+                  className="w-full h-11 px-4 rounded-lg border border-border/50 bg-secondary/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all font-medium text-foreground hover:bg-secondary/70 appearance-none"
                   value={deployNodeName}
                   onChange={(e) => {
                     const name = e.target.value;
@@ -601,9 +710,9 @@ export default function HomePage() {
                     }
                   }}
                 >
-                  <option value="" disabled>Select target node to begin...</option>
+                  <option value="" disabled className="bg-background text-muted-foreground">Select a node to begin...</option>
                   {nodes.map((node) => (
-                    <option key={`remote-${node.id}`} value={node.name}>
+                    <option key={`remote-${node.id}`} value={node.name} className="bg-background text-foreground">
                       {node.name} {node.endpoint ? `(${node.endpoint})` : ""}
                     </option>
                   ))}
@@ -611,41 +720,41 @@ export default function HomePage() {
               </div>
 
               {deployNodeName && (
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 animate-in fade-in slide-in-from-top-2 pt-2 border-t border-slate-200/50">
-                  <div className="md:col-span-4 space-y-1.5">
-                    <Label className="text-[10px] text-muted-foreground uppercase flex items-center gap-1.5 ml-1">
-                      <User className="h-2.5 w-2.5" /> Username
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-5 animate-in fade-in slide-in-from-top-2 pt-4 border-t border-border/40">
+                  <div className="md:col-span-4 space-y-2">
+                    <Label className="text-[10px] text-muted-foreground uppercase flex items-center gap-1.5 ml-1 font-semibold">
+                      <User className="h-3 w-3 text-primary/70" /> User
                     </Label>
                     <Input
                       value={sshUser}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSshUser(e.target.value)}
                       placeholder="root"
-                      className="h-9 font-mono text-sm bg-background border-border/60 focus:border-blue-500/50"
+                      className="h-10 font-mono text-sm shadow-sm"
                     />
                   </div>
 
-                  <div className="md:col-span-3 space-y-1.5">
-                    <Label className="text-[10px] text-muted-foreground uppercase flex items-center gap-1.5 ml-1">
-                      <Hash className="h-2.5 w-2.5" /> Port
+                  <div className="md:col-span-3 space-y-2">
+                    <Label className="text-[10px] text-muted-foreground uppercase flex items-center gap-1.5 ml-1 font-semibold">
+                      <Hash className="h-3 w-3 text-primary/70" /> Port
                     </Label>
                     <Input
                       type="number"
                       value={sshPort}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSshPort(Number(e.target.value))}
-                      className="h-9 font-mono text-sm bg-background border-border/60 focus:border-blue-500/50 text-center"
+                      className="h-10 font-mono text-sm shadow-sm text-center"
                     />
                   </div>
 
-                  <div className="md:col-span-5 space-y-1.5">
-                    <Label className="text-[10px] text-muted-foreground uppercase flex items-center gap-1.5 ml-1">
-                      <Zap className="h-2.5 w-2.5" /> Connection Target
+                  <div className="md:col-span-5 space-y-2">
+                    <Label className="text-[10px] text-muted-foreground uppercase flex items-center gap-1.5 ml-1 font-semibold">
+                      <Zap className="h-3 w-3 text-primary/70" /> Connection Host
                     </Label>
                     {(() => {
                       const node = nodes.find(n => n.name === deployNodeName);
                       return (
-                        <div className="h-9 flex items-center justify-between px-3 bg-blue-600/10 rounded-lg border border-blue-600/20 text-blue-700 font-mono text-xs font-bold truncate">
-                          <span className="opacity-60 text-[9px] uppercase tracking-tighter mr-2 hidden sm:inline">Target:</span>
-                          <span className="flex-1 text-center sm:text-right">{node?.sshHost || node?.endpoint || "Undefined"}</span>
+                        <div className="h-10 flex items-center justify-between px-4 bg-primary/10 rounded-lg border border-primary/20 text-primary font-mono text-xs font-bold truncate shadow-inner">
+                          <span className="opacity-70 text-[10px] uppercase tracking-wider mr-2 hidden sm:inline">URL:</span>
+                          <span className="flex-1 text-center sm:text-right text-primary-foreground">{node?.sshHost || node?.endpoint || "Undefined"}</span>
                         </div>
                       );
                     })()}
@@ -654,54 +763,57 @@ export default function HomePage() {
               )}
 
               {!deployNodeName && (
-                <div className="text-center py-6 text-sm text-blue-600/70 bg-blue-50/50 rounded-lg border border-blue-200/50 border-dashed animate-pulse">
+                <div className="text-center py-5 text-sm font-medium text-muted-foreground/70 bg-black/20 rounded-lg border border-border/40 border-dashed animate-pulse">
                   Please select a node to configure connection details.
                 </div>
               )}
             </div>
 
             {remoteLog ? (
-              <div className="space-y-2.5">
-                <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 ml-0.5">
-                  <Terminal className="h-3 w-3" />
-                  Deployment Logs
+              <div className="space-y-3 mb-2 animate-in slide-in-from-bottom-2 fade-in duration-300">
+                <Label className="text-[10px] font-bold uppercase tracking-widest text-primary flex items-center gap-2 ml-1">
+                  <Terminal className="h-3.5 w-3.5" />
+                  Execution Logs
                 </Label>
-                <div className="text-xs font-mono bg-[#0c0c0c] p-5 rounded-xl border border-slate-800 h-80 overflow-y-auto whitespace-pre-wrap text-emerald-400 shadow-2xl relative group">
-                  <div className="sticky top-0 right-0 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Badge variant="outline" className="text-[9px] bg-slate-900 border-slate-700 text-slate-400">bash</Badge>
+                <div className="text-[13px] leading-relaxed font-mono bg-[#050505] p-5 rounded-xl border border-[#333] h-[320px] overflow-y-auto whitespace-pre-wrap text-emerald-400 shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] relative group custom-scrollbar">
+                  <div className="sticky top-0 right-0 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <Badge variant="outline" className="text-[9px] uppercase tracking-widest bg-emerald-950/40 border-emerald-800 text-emerald-500 backdrop-blur-sm">Sysout</Badge>
                   </div>
                   {remoteLog}
-                  {busy && <span className="animate-pulse ml-1 inline-block w-2 h-4 bg-emerald-500 align-middle shadow-[0_0_10px_rgba(16,185,129,0.5)]"></span>}
+                  {busy && <span className="animate-pulse ml-1 inline-block w-2.5 h-4 bg-emerald-400 align-middle shadow-[0_0_8px_rgba(52,211,153,0.8)]"></span>}
                 </div>
               </div>
             ) : (
               busy && (
-                <div className="flex flex-col items-center justify-center py-20 gap-4 animate-in fade-in zoom-in duration-300">
-                  <RefreshCw className="h-10 w-10 text-blue-500 animate-spin" />
-                  <p className="text-sm font-medium text-muted-foreground">Preparing configuration...</p>
+                <div className="flex flex-col items-center justify-center py-16 gap-5 animate-in fade-in zoom-in duration-300">
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-pulse"></div>
+                    <RefreshCw className="h-12 w-12 text-primary animate-spin relative z-10" />
+                  </div>
+                  <p className="text-sm font-semibold tracking-wide text-primary animate-pulse">Establishing Secure Connection...</p>
                 </div>
               )
             )}
           </div>
 
-          <DialogFooter className="border-t pt-5 gap-3">
-            <Button variant="ghost" onClick={() => setIsRemoteOpen(false)} disabled={busy} className="px-6 hover:bg-slate-100 transition-colors">
-              {remoteLog ? "Close" : "Cancel"}
+          <DialogFooter className="p-6 pt-4 border-t border-border/50 bg-card/40 flex-row justify-end space-x-3 sm:space-x-4">
+            <Button variant="outline" onClick={() => setIsRemoteOpen(false)} disabled={busy} className="px-6 border-border/60 hover:bg-secondary transition-colors">
+              {remoteLog && !busy ? "Close Window" : "Cancel"}
             </Button>
             <Button
               onClick={executeRemoteDeploy}
               disabled={busy || !deployNodeName}
-              className="bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-900/10 min-w-[160px] h-11 transition-all active:scale-95 flex items-center gap-2"
+              className="bg-primary hover:bg-primary/80 text-primary-foreground shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_25px_rgba(16,185,129,0.3)] min-w-[180px] h-10 transition-all duration-300 active:scale-95 flex items-center gap-2"
             >
               {busy ? (
                 <>
-                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <RefreshCw className="h-4 w-4 animate-spin opacity-80" />
                   Deploying...
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="h-4 w-4" />
-                  Start Deployment
+                  Initiate Setup
                 </>
               )}
             </Button>

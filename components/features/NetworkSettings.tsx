@@ -44,14 +44,17 @@ export function NetworkSettings({
     setMtu,
 }: NetworkSettingsProps) {
     return (
-        <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
-            <CardHeader className="py-3 px-4 border-b border-border/50 bg-muted/10">
-                <div className="flex items-center gap-2">
-                    <Settings2 className="h-4 w-4 text-primary" />
-                    <CardTitle className="text-sm font-semibold">Network Configuration</CardTitle>
+        <Card className="border-border/40 bg-card/40 backdrop-blur-md shadow-lg shadow-black/20 overflow-hidden relative group">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
+            <CardHeader className="py-3 px-5 border-b border-border/40 bg-secondary/30">
+                <div className="flex items-center gap-2.5 relative z-10">
+                    <div className="p-1.5 rounded-md bg-primary/10 border border-primary/20">
+                        <Settings2 className="h-4 w-4 text-primary" />
+                    </div>
+                    <CardTitle className="text-sm font-semibold tracking-wide">Network Configuration</CardTitle>
                 </div>
             </CardHeader>
-            <CardContent className="p-4 grid gap-4">
+            <CardContent className="p-5 grid gap-5 relative z-10">
                 {/* Top Row: Inputs */}
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                     <div className="space-y-1">
@@ -111,19 +114,19 @@ export function NetworkSettings({
                 </div>
 
                 {/* Bottom Row: Toggles */}
-                <div className="flex flex-wrap gap-4 pt-1 bg-muted/5 p-2 rounded-md border border-border/30">
-                    <div className="flex items-center space-x-2">
+                <div className="flex flex-wrap gap-5 pt-2 bg-black/20 p-3 rounded-lg border border-border/30">
+                    <div className="flex items-center space-x-2.5">
                         <Checkbox
                             id="fwd"
                             checked={includeIpForwarding}
                             onChange={(e) => setIncludeIpForwarding(e.target.checked)}
                         />
-                        <Label htmlFor="fwd" className="text-xs font-medium cursor-pointer">
+                        <Label htmlFor="fwd" className="text-xs font-medium cursor-pointer flex items-center gap-2">
                             IP Forwarding
                         </Label>
                     </div>
-                    <div className="h-4 w-px bg-border/50 hidden sm:block" />
-                    <div className="flex items-center space-x-2">
+                    <div className="h-5 w-px bg-border/40 hidden sm:block" />
+                    <div className="flex items-center space-x-2.5">
                         <Checkbox
                             id="babel"
                             checked={enableBabel}
@@ -133,8 +136,8 @@ export function NetworkSettings({
                             Babel Config
                         </Label>
                     </div>
-                    <div className="h-4 w-px bg-border/50 hidden sm:block" />
-                    <div className="flex items-center space-x-2">
+                    <div className="h-5 w-px bg-border/40 hidden sm:block" />
+                    <div className="flex items-center space-x-2.5">
                         <Checkbox
                             id="auto-keys"
                             checked={autoGenerateKeys}
