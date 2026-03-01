@@ -15,6 +15,8 @@ type MeshState = {
   gatewayNodeNames: string[];
   gatewayTouched: boolean;
   mtu: number;
+  sshHosts: any[];
+  sshKeys: Record<string, string>;
   setNetworkCidr: (value: string) => void;
   setEndpointVersion: (value: EndpointVersion) => void;
   setInterfaceName: (value: string) => void;
@@ -31,9 +33,12 @@ type MeshState = {
   ) => void;
   setGatewayTouched: (value: boolean) => void;
   setMtu: (value: number) => void;
+  setSshHosts: (value: any[]) => void;
+  setSshKeys: (value: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
   reorderNodes: (newNodes: NodeInput[]) => void;
   reorderClients: (newClients: ClientInput[]) => void;
   resetAll: () => void;
+  importMeshState: (data: Partial<MeshState>) => void;
 };
 
 const newId = () =>
@@ -71,7 +76,9 @@ const defaultState = () => ({
   clients: [],
   gatewayNodeNames: [],
   gatewayTouched: false,
-  mtu: 1420
+  mtu: 1420,
+  sshHosts: [],
+  sshKeys: {}
 });
 
 export const useMeshStore = create<MeshState>()(
@@ -100,19 +107,42 @@ export const useMeshStore = create<MeshState>()(
         })),
       setGatewayTouched: (value) => set({ gatewayTouched: value }),
       setMtu: (value) => set({ mtu: value }),
+      setSshHosts: (value) => set({ sshHosts: value }),
+      setSshKeys: (value) => set((state) => ({
+        sshKeys: typeof value === "function" ? value(state.sshKeys) : value
+      })),
       reorderNodes: (newNodes) => set({ nodes: newNodes }),
       reorderClients: (newClients) => set({ clients: newClients }),
-      resetAll: () => set(defaultState())
+      resetAll: () => set(defaultState()),
+      importMeshState: (data) => {
+        // Only keep fields that exist in defaultState
+        const defaults = defaultState();
+        const filteredData: any = {};
+        for (const key in defaults) {
+          if (data.hasOwnProperty(key)) {
+            filteredData[key] = (data as any)[key];
+          }
+        }
+        set(filteredData);
+      }
     }),
     {
       name: "wg-mesh-config",
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
+        networkCidr: state.networkCidr,
+        endpointVersion: state.endpointVersion,
+        interfaceName: state.interfaceName,
+        persistentKeepalive: state.persistentKeepalive,
+        includeIpForwarding: state.includeIpForwarding,
+        enableBabel: state.enableBabel,
+        autoGenerateKeys: state.autoGenerateKeys,
         nodes: state.nodes,
         clients: state.clients,
         gatewayNodeNames: state.gatewayNodeNames,
         gatewayTouched: state.gatewayTouched,
         mtu: state.mtu
+        // sshHosts and sshKeys are EXCLUDED here for security (no persistence)
       })
     }
   )

@@ -244,15 +244,33 @@ export function generateNodeConfig(
 }
 
 export function generateSetupScript(nodeName: string, interfaceName: string, enableBabel: boolean): string {
+  const confFile = `${safeName(interfaceName)}.conf`;
+
   return [
     "#!/bin/bash",
     "# WG-Mesh Auto-Generated Setup Script",
     `IFACE="${interfaceName}"`,
+    `CONF_FILE="${confFile}"`,
     "CONFIG_DIR=\"/etc/wireguard\"",
     "",
     `echo "[*] Configuring node: ${nodeName}"`,
     "",
     "if [ \"$EUID\" -ne 0 ]; then echo \"[!] Please run as root\"; exit 1; fi",
+    "",
+    "# Dynamic Interface Detection",
+    "echo \"[*] Detecting default network interface...\"",
+    "DETECTED_IFACE=$(ip route | grep default | awk '{print $5}' | head -n1)",
+    "if [ -z \"$DETECTED_IFACE\" ]; then",
+    "  DETECTED_IFACE=\"eth0\"",
+    "  echo \"[!] Could not detect default interface, falling back to eth0\"",
+    "else",
+    "  echo \"[+] Detected interface: $DETECTED_IFACE\"",
+    "fi",
+    "",
+    "if [ \"$DETECTED_IFACE\" != \"eth0\" ]; then",
+    "  echo \"[*] Updating masquerade rules in $CONF_FILE (eth0 -> $DETECTED_IFACE)...\"",
+    "  sed -i \"s/-o eth0/-o $DETECTED_IFACE/g\" \"$CONF_FILE\"",
+    "fi",
     "",
     "echo \"[*] Checking required packages...\"",
     "if ! command -v wg &> /dev/null; then",
@@ -268,7 +286,7 @@ export function generateSetupScript(nodeName: string, interfaceName: string, ena
     "",
     "echo \"[*] Copying WireGuard config...\"",
     "mkdir -p \"$CONFIG_DIR\"",
-    "cp \"$IFACE.conf\" \"$CONFIG_DIR/\"",
+    "cp \"$CONF_FILE\" \"$CONFIG_DIR/$IFACE.conf\"",
     "chmod 600 \"$CONFIG_DIR/$IFACE.conf\"",
     "",
     enableBabel ? [

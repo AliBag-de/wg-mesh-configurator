@@ -68,7 +68,7 @@ export function NodeTable({
     };
     return (
         <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-md shadow-lg overflow-hidden relative group">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
+            <div className="absolute inset-0 bg-linear-to-br from-primary/5 to-transparent pointer-events-none" />
             <div className="flex items-center justify-between p-4 border-b border-border/40 bg-secondary/30 relative z-10">
                 <div className="flex items-center gap-2.5">
                     <div className="p-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/20">
@@ -246,8 +246,8 @@ export function NodeTable({
                                                     className="h-8 text-xs font-mono px-2.5 bg-black/20 border-border/40 focus:border-primary/50 focus:bg-background/80 transition-all"
                                                 />
                                                 <datalist id={`ssh-hosts-${node.id}`}>
-                                                    {sshHosts.map(h => (
-                                                        <option key={h.host} value={h.host} />
+                                                    {sshHosts.map((h, i) => (
+                                                        <option key={`${h.host}-${i}`} value={h.host} />
                                                     ))}
                                                 </datalist>
                                             </td>

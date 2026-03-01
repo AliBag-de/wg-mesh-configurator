@@ -15,7 +15,7 @@ export function GatewaySelection({
 }: GatewaySelectionProps) {
     return (
         <Card className="border-border/40 bg-card/40 backdrop-blur-md shadow-lg h-full overflow-hidden relative group">
-            <div className="absolute inset-0 bg-gradient-to-tr from-primary/5 to-transparent pointer-events-none" />
+            <div className="absolute inset-0 bg-linear-to-tr from-primary/5 to-transparent pointer-events-none" />
             <CardHeader className="py-3 px-5 border-b border-border/40 bg-secondary/30">
                 <div className="flex items-center gap-2.5 relative z-10">
                     <div className="p-1.5 rounded-md bg-amber-500/10 border border-amber-500/20">

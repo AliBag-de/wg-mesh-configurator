@@ -1,20 +1,16 @@
-version: "3.8"
-
 services:
   wg-manager:
     build: .
     container_name: wg-manager
     restart: unless-stopped
-    # 'host' network mode is required to see the host's WireGuard interfaces (wg0, etc.)
-    network_mode: host
-    # NET_ADMIN is required to run 'wg' commands against the kernel
+    ports:
+      - "3000:3000"
+    # network_mode: host (Only use on Linux if host interface access is needed)
     cap_add:
       - NET_ADMIN
     environment:
       - NODE_ENV=production
-      # Bind to localhost to prevent external access (as requested)
-      # Access via SSH tunnel or reverse proxy on the server if needed.
-      - HOSTNAME=127.0.0.1
+      - HOSTNAME=0.0.0.0
       - PORT=3000
     volumes:
       - ./data:/app/data

@@ -1,6 +1,7 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { promises as fs } from "fs";
+import { platform } from "os";
 import { Peer, RuntimeInterface, RuntimePeer, SystemInfo } from "./contracts";
 
 // execFile is safer than exec as it doesn't spawn a shell by default
@@ -19,6 +20,12 @@ export class WireGuardCommandError extends Error {
 
 export class WireGuardAdapter {
     private async runCommand(cmd: string, args: string[]): Promise<string> {
+        if (platform() !== "linux") {
+            throw new WireGuardCommandError(
+                `Command '${cmd}' is not supported on ${platform()}. 'Activate on Host' requires a Linux system with WireGuard and iproute2.`,
+                "ERR_NOT_LINUX"
+            );
+        }
         try {
             const { stdout, stderr } = await execFileAsync(cmd, args);
             if (stderr) {
@@ -99,7 +106,8 @@ export class WireGuardAdapter {
             const stderr = (e?.stderr as string | undefined) || e?.message || "";
             if (
                 stderr.includes("No such device") ||
-                stderr.includes("Unable to access interface")
+                stderr.includes("Unable to access interface") ||
+                (e as WireGuardCommandError).code === "ERR_NOT_LINUX"
             ) {
                 return { exists: false, peers: [] };
             }

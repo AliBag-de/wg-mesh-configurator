@@ -44,8 +44,8 @@ export function NetworkSettings({
     setMtu,
 }: NetworkSettingsProps) {
     return (
-        <Card className="border-border/40 bg-card/40 backdrop-blur-md shadow-lg shadow-black/20 overflow-hidden relative group">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
+        <Card className="border-border/50 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-2xl relative overflow-hidden group">
+            <div className="absolute inset-0 bg-linear-to-br from-primary/5 to-transparent pointer-events-none" />
             <CardHeader className="py-3 px-5 border-b border-border/40 bg-secondary/30">
                 <div className="flex items-center gap-2.5 relative z-10">
                     <div className="p-1.5 rounded-md bg-primary/10 border border-primary/20">

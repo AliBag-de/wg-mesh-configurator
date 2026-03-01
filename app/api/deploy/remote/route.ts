@@ -13,7 +13,12 @@ export async function POST(req: NextRequest) {
             }
 
             try {
-                const { payload, nodeName } = await req.json() as { payload: GeneratePayload, nodeName: string };
+                const { payload, nodeName, action = "deploy_and_execute", sshKeyContent } = await req.json() as {
+                    payload: GeneratePayload,
+                    nodeName: string,
+                    action?: "deploy_and_execute" | "deploy" | "execute",
+                    sshKeyContent?: string
+                };
 
                 // 1. Resolve mesh state
                 const { resolvedNodes, resolvedClients, nodeIps, payload: p } = resolveMeshState(payload);
@@ -28,7 +33,8 @@ export async function POST(req: NextRequest) {
                 const targetNode = resolvedNodes[targetNodeIndex];
                 const peerIpsToPing = nodeIps.filter((_, i) => i !== targetNodeIndex);
 
-                if (!targetNode.endpoint && !targetNode.sshHost) {
+                const sshHost = targetNode.sshHost || targetNode.endpoint;
+                if (!sshHost) {
                     sendEvent({ error: "Node has no SSH Host or Public Endpoint configured.", status: "error" });
                     controller.close();
                     return;
@@ -40,31 +46,51 @@ export async function POST(req: NextRequest) {
                     return;
                 }
 
-                // 3. Generate assets
-                sendEvent({ log: `[System] Generated WireGuard configurations for ${targetNode.name}...\n`, status: "running" });
-                const files = generateNodeAssets(targetNode.name, payload);
+                let result;
 
-                // 4. Deploy via SSH with streaming logs
-                const result = await remoteDeployer.deploy({
-                    host: targetNode.sshHost || targetNode.endpoint,
-                    port: targetNode.sshPort,
-                    user: targetNode.sshUser,
-                    interfaceName: p.interfaceName,
-                    files: files,
-                    peerIpsToPing: peerIpsToPing,
-                    onLog: (msg) => {
-                        sendEvent({ log: msg, status: "running" });
-                    }
-                });
+                if (action === "execute") {
+                    // Only run setup
+                    sendEvent({ log: `[System] Re-executing setup on ${targetNode.name}...\n`, status: "running" });
+                    result = await remoteDeployer.executeExistingSetup({
+                        host: sshHost,
+                        port: targetNode.sshPort,
+                        user: targetNode.sshUser,
+                        interfaceName: p.interfaceName,
+                        peerIpsToPing: peerIpsToPing,
+                        privateKeyContent: sshKeyContent,
+                        onLog: (msg) => {
+                            sendEvent({ log: msg, status: "running" });
+                        }
+                    });
+                } else {
+                    // Generate assets
+                    sendEvent({ log: `[System] Generated WireGuard configurations for ${targetNode.name}...\n`, status: "running" });
+                    const files = generateNodeAssets(targetNode.name, payload);
+
+                    // Deploy (with or without execute)
+                    result = await remoteDeployer.deploy({
+                        host: sshHost,
+                        port: targetNode.sshPort,
+                        user: targetNode.sshUser,
+                        interfaceName: p.interfaceName,
+                        files: files,
+                        peerIpsToPing: peerIpsToPing,
+                        privateKeyContent: sshKeyContent,
+                        skipExecute: action === "deploy", // TRUE if only deploy, FALSE if deploy_and_execute
+                        onLog: (msg) => {
+                            sendEvent({ log: msg, status: "running" });
+                        }
+                    });
+                }
 
                 if (!result.success) {
-                    sendEvent({ log: `\n[Fatal] Deployment process failed.\n`, error: "Deployment failed", status: "error" });
+                    sendEvent({ log: `\n[Fatal] Remote operation failed.\n`, error: "Operation failed", status: "error" });
                     controller.close();
                     return;
                 }
 
                 // Finish stream
-                sendEvent({ log: "\n[System] All remote operations completed.\n", status: "success" });
+                sendEvent({ log: `\n[System] All remote operations (${action}) completed.\n`, status: "success" });
                 controller.close();
 
             } catch (error: any) {

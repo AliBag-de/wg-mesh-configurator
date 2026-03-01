@@ -114,7 +114,7 @@ export function ClientTable({
 
     return (
         <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-md shadow-lg overflow-hidden mt-6 relative group">
-            <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/5 to-transparent pointer-events-none" />
+            <div className="absolute inset-0 bg-linear-to-tr from-blue-500/5 to-transparent pointer-events-none" />
             <div className="flex items-center justify-between p-4 border-b border-border/40 bg-secondary/30 relative z-10">
                 <div className="flex items-center gap-2.5">
                     <div className="p-1.5 rounded-md bg-blue-500/10 border border-blue-500/20">

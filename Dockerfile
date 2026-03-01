@@ -15,10 +15,8 @@ COPY . .
 # Build the application
 RUN npm run build
 
-# Production server
 ENV NODE_ENV=production
 ENV PORT=3000
-# Restrict to localhost by default (can be overridden in docker-compose)
-ENV HOSTNAME=127.0.0.1 
+ENV HOSTNAME=0.0.0.0
 
 CMD ["npm", "start"]

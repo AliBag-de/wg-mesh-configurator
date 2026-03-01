@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DashboardLayout } from "@/components/features/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { GeneratePayload } from "@/lib/types";
 import {
   Trash2,
@@ -29,7 +30,9 @@ import {
   Hash,
   Zap,
   CheckCircle2,
-  ShieldAlert
+  ShieldAlert,
+  ShieldCheck,
+  AlertCircle
 } from "lucide-react";
 import {
   Dialog,
@@ -77,10 +80,12 @@ export default function HomePage() {
     resetAll,
     reorderNodes,
     reorderClients,
+    sshKeys,
+    sshHosts,
+    setSshHosts
   } = useMeshStore();
 
   const [busy, setBusy] = useState(false);
-  const [sshHosts, setSshHosts] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<"list" | "topology">("list");
   const [isMounted, setIsMounted] = useState(false);
 
@@ -100,6 +105,7 @@ export default function HomePage() {
   const [remoteLog, setRemoteLog] = useState("");
   const [sshUser, setSshUser] = useState("root");
   const [sshPort, setSshPort] = useState(22);
+  const [deployAction, setDeployAction] = useState<"deploy_and_execute" | "deploy" | "execute">("deploy_and_execute");
 
   // Batch Deploy State
   const [isBatchOpen, setIsBatchOpen] = useState(false);
@@ -107,6 +113,17 @@ export default function HomePage() {
   const [batchProgress, setBatchProgress] = useState(0);
   const [batchNodeStatuses, setBatchNodeStatuses] = useState<Record<string, DeployStatus>>({});
   const [batchLogs, setBatchLogs] = useState("");
+
+  // Sync SSH credentials when node selection or modal opens
+  useEffect(() => {
+    if (isRemoteOpen && deployNodeName) {
+      const node = nodes.find(n => n.name === deployNodeName);
+      if (node) {
+        setSshUser(node.sshUser || "root");
+        setSshPort(node.sshPort || 22);
+      }
+    }
+  }, [isRemoteOpen, deployNodeName, nodes]);
 
   // Actions
   const addNode = () => {
@@ -330,19 +347,20 @@ export default function HomePage() {
       const node = nodes.find(n => n.name === deployNodeName);
       if (!node) throw new Error("Node not found");
 
-      // Use node-level credentials if available, otherwise fallback to global state
-      const targetUser = node.sshUser || sshUser;
-      const targetPort = node.sshPort || sshPort;
-
       const nodesWithSSH = nodes.map(n =>
-        n.name === deployNodeName ? { ...n, sshUser: targetUser, sshPort: targetPort } : n
+        n.name === deployNodeName ? { ...n, sshUser: sshUser, sshPort: sshPort } : n
       );
       const enrichedPayload = { ...payload, nodes: nodesWithSSH };
 
       const res = await fetch("/api/deploy/remote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payload: enrichedPayload, nodeName: deployNodeName }),
+        body: JSON.stringify({
+          payload: enrichedPayload,
+          nodeName: deployNodeName,
+          action: deployAction,
+          sshKeyContent: Object.values(sshKeys)[0] // Simple: use the first uploaded key for now
+        }),
       });
 
       if (!res.ok) {
@@ -438,7 +456,11 @@ export default function HomePage() {
         const res = await fetch("/api/deploy/remote", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ payload, nodeName: node.name }),
+          body: JSON.stringify({
+            payload,
+            nodeName: node.name,
+            sshKeyContent: Object.values(sshKeys)[0] // Simple: use the first uploaded key for now
+          }),
         });
 
         if (!res.ok) throw new Error("Server error");
@@ -632,38 +654,66 @@ export default function HomePage() {
       </div>
 
       <Dialog open={isDeployOpen} onOpenChange={setIsDeployOpen}>
-        <DialogContent className="sm:max-w-[425px] bg-card/90 backdrop-blur-xl border-primary/20 shadow-2xl">
-          <DialogHeader>
-            <DialogTitle>Install on This Server</DialogTitle>
-            <DialogDescription>
-              Select which node this server represents in the mesh network. This process will overwrite existing WireGuard settings.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-6 py-6">
-            <div className="grid gap-2.5">
-              <Label htmlFor="node-select" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-1">
-                Node Selection
+        <DialogContent className="sm:max-w-[480px] bg-background/95 backdrop-blur-2xl shadow-2xl border-primary/30 transition-all rounded-xl p-0 overflow-hidden">
+          <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent"></div>
+          <div className="p-6 pb-2 relative z-10">
+            <DialogHeader className="border-b border-border/50 pb-4">
+              <div className="flex items-center gap-2 mb-1">
+                <ShieldCheck className="h-5 w-5 text-primary drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                <DialogTitle className="text-xl font-bold tracking-tight">Host Instance Setup</DialogTitle>
+              </div>
+              <DialogDescription className="text-muted-foreground/80 mt-1">
+                Designate this server's identity within the mesh network. Existing WireGuard configurations will be re-synchronized.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+
+          <div className="px-6 py-4 flex flex-col gap-6">
+            <div className="space-y-3 p-5 rounded-xl border border-white/5 bg-white/5 backdrop-blur-sm shadow-inner">
+              <Label htmlFor="node-select" className="text-[10px] font-bold uppercase tracking-widest text-primary flex items-center gap-1.5 ml-1">
+                <Server className="h-3.5 w-3.5" /> Identity Selection
               </Label>
-              <Select id="node-select" value={deployNodeName} onChange={(e) => setDeployNodeName(e.target.value)}>
-                <option value="" disabled className="bg-background">Select target node...</option>
+              <select
+                id="node-select"
+                className="w-full h-11 px-4 rounded-lg border border-border/50 bg-secondary/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all font-medium text-foreground hover:bg-secondary/70 appearance-none"
+                value={deployNodeName}
+                onChange={(e) => setDeployNodeName(e.target.value)}
+              >
+                <option value="" disabled className="bg-background text-muted-foreground">Select local node identity...</option>
                 {nodes.map((node) => (
-                  <option key={node.id} value={node.name} className="bg-background">
+                  <option key={node.id} value={node.name} className="bg-background text-foreground">
                     {node.name} {node.endpoint ? `(${node.endpoint})` : "(No endpoint)"}
                   </option>
                 ))}
-              </Select>
+              </select>
+            </div>
+
+            <div className="flex items-start gap-3 p-3.5 rounded-lg bg-blue-500/5 border border-blue-500/10 text-[11px] text-blue-200/60 leading-relaxed shadow-sm">
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-blue-400" />
+              <span>This action will perform a local deployment. Ensure you are running this on the actual hardware designated above.</span>
             </div>
           </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="ghost" onClick={() => setIsDeployOpen(false)} disabled={busy} className="hover:bg-destructive/10 hover:text-destructive transition-colors">
+
+          <DialogFooter className="p-6 pt-4 border-t border-border/50 bg-card/40 flex-row justify-end space-x-3 sm:space-x-4">
+            <Button variant="outline" onClick={() => setIsDeployOpen(false)} disabled={busy} className="px-6 border-border/60 hover:bg-secondary transition-colors">
               Cancel
             </Button>
             <Button
               onClick={executeDeploy}
               disabled={busy || !deployNodeName}
-              className="bg-primary hover:bg-primary/80 text-primary-foreground shadow-lg shadow-primary/20 hover:shadow-primary/40 active:scale-95 transition-all px-8"
+              className="bg-primary hover:bg-primary/80 text-primary-foreground shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_25px_rgba(16,185,129,0.3)] min-w-[160px] h-10 transition-all duration-300 active:scale-95 flex items-center gap-2"
             >
-              {busy ? "Applying..." : "Start Installation"}
+              {busy ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin opacity-80" />
+                  Applying...
+                </>
+              ) : (
+                <>
+                  <Zap className="h-4 w-4 text-white" />
+                  Activate Mesh
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -762,6 +812,57 @@ export default function HomePage() {
                 </div>
               )}
 
+              {deployNodeName && (
+                <div className="space-y-3 pt-4 border-t border-border/40">
+                  <Label className="text-[10px] text-muted-foreground uppercase flex items-center gap-1.5 ml-1 font-semibold">
+                    <Settings className="h-3 w-3 text-primary/70" /> Deployment Action
+                  </Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <button
+                      onClick={() => setDeployAction("deploy_and_execute")}
+                      className={cn(
+                        "flex flex-col items-center justify-center p-3 rounded-xl border transition-all gap-1",
+                        deployAction === "deploy_and_execute"
+                          ? "bg-primary/20 border-primary text-primary shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                          : "bg-black/20 border-border/40 text-muted-foreground hover:border-primary/40 hover:bg-primary/5"
+                      )}
+                    >
+                      <Zap className="h-4 w-4" />
+                      <span className="text-[10px] font-bold uppercase">Full Setup</span>
+                    </button>
+                    <button
+                      onClick={() => setDeployAction("deploy")}
+                      className={cn(
+                        "flex flex-col items-center justify-center p-3 rounded-xl border transition-all gap-1",
+                        deployAction === "deploy"
+                          ? "bg-blue-500/20 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]"
+                          : "bg-black/20 border-border/40 text-muted-foreground hover:border-blue-500/40 hover:bg-blue-500/5"
+                      )}
+                    >
+                      <DownloadCloud className="h-4 w-4" />
+                      <span className="text-[10px] font-bold uppercase">Upload Only</span>
+                    </button>
+                    <button
+                      onClick={() => setDeployAction("execute")}
+                      className={cn(
+                        "flex flex-col items-center justify-center p-3 rounded-xl border transition-all gap-1",
+                        deployAction === "execute"
+                          ? "bg-amber-500/20 border-amber-500 text-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.2)]"
+                          : "bg-black/20 border-border/40 text-muted-foreground hover:border-amber-500/40 hover:bg-amber-500/5"
+                      )}
+                    >
+                      <Terminal className="h-4 w-4" />
+                      <span className="text-[10px] font-bold uppercase">Execute Setup</span>
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground italic px-1 pt-1">
+                    {deployAction === "deploy_and_execute" && "Upload configuration files and immediately initiate the WireGuard setup script."}
+                    {deployAction === "deploy" && "Only transfer configuration files to the remote server's temporary directory."}
+                    {deployAction === "execute" && "Initiate the setup script and verification process for already uploaded files."}
+                  </p>
+                </div>
+              )}
+
               {!deployNodeName && (
                 <div className="text-center py-5 text-sm font-medium text-muted-foreground/70 bg-black/20 rounded-lg border border-border/40 border-dashed animate-pulse">
                   Please select a node to configure connection details.
@@ -813,7 +914,7 @@ export default function HomePage() {
               ) : (
                 <>
                   <CheckCircle2 className="h-4 w-4" />
-                  Initiate Setup
+                  {deployAction === "execute" ? "Run Setup Script" : "Initiate Deploy"}
                 </>
               )}
             </Button>
