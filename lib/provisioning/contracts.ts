@@ -95,7 +95,10 @@ export const apiErrorCodeSchema = z.enum([
   "REVISION_CONFLICT",
   "LOCKED",
   "APPLY_FAILED",
-  "INTERNAL_ERROR"
+  "INTERNAL_ERROR",
+  "NODE_NOT_FOUND",
+  "KEYS_REQUIRED",
+  "DEPLOY_FAILED"
 ]);
 
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;

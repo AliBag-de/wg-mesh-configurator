@@ -1,0 +1,4 @@
+components/features/ProvisioningPanel.tsx(860,41): error TS2322: Type '{ checked: boolean; onCheckedChange: (checked: any) => void; }' is not assignable to type 'IntrinsicAttributes & InputHTMLAttributes<HTMLInputElement> & RefAttributes<HTMLInputElement>'.
+  Property 'onCheckedChange' does not exist on type 'IntrinsicAttributes & InputHTMLAttributes<HTMLInputElement> & RefAttributes<HTMLInputElement>'.
+components/features/ProvisioningPanel.tsx(860,59): error TS7006: Parameter 'checked' implicitly has an 'any' type.
+components/features/ProvisioningPanel.tsx(920,46): error TS2304: Cannot find name 'pushToRemotes'.

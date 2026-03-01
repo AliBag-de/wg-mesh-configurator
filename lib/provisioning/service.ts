@@ -55,6 +55,34 @@ function pushAudit(name: string, entry: Omit<AuditEntry, "id" | "at">) {
   auditStore.set(name, list.slice(0, 500));
 }
 
+function generateManualInstructions(interfaceName: string, ops: RuntimeOp[]): string {
+  let instructions = "Recommended manual steps to sync high-level changes:\n\n";
+
+  // 1. wg set commands (for live apply)
+  instructions += "--- Option A: Live Update (No restart) ---\n";
+  ops.forEach(op => {
+    if (op.type === "add" || op.type === "update") {
+      instructions += `sudo wg set ${interfaceName} peer ${op.peer.publicKey} allowed-ips ${op.peer.allowedIps.join(",")}${op.peer.endpoint ? ` endpoint ${op.peer.endpoint}` : ""}\n`;
+    } else if (op.type === "remove") {
+      instructions += `sudo wg set ${interfaceName} peer ${op.peer.publicKey} remove\n`;
+    }
+  });
+
+  // 2. wg.conf block (for persistence)
+  instructions += "\n--- Option B: Path to Persistence ---\n";
+  instructions += `Append these blocks to /etc/wireguard/${interfaceName}.conf:\n\n`;
+  ops.forEach(op => {
+    if (op.type === "add" || op.type === "update") {
+      instructions += `[Peer]\nPublicKey = ${op.peer.publicKey}\nAllowedIPs = ${op.peer.allowedIps.join(", ")}\n`;
+      if (op.peer.endpoint) instructions += `Endpoint = ${op.peer.endpoint}\n`;
+      if (op.peer.persistentKeepalive) instructions += `PersistentKeepalive = ${op.peer.persistentKeepalive}\n`;
+      instructions += "\n";
+    }
+  });
+
+  return instructions.trim();
+}
+
 function getPeersForInterface(state: PersistedState, interfaceName: string): Peer[] {
   return state.peers.filter((p: Peer) => p.interface === interfaceName || (!p.interface && interfaceName === "wg0"));
 }
@@ -358,8 +386,12 @@ export async function applyPeerOperations(
       revision,
       summary: { added, updated, toggled, removed, failed: 0 }
     };
-  } catch (error) {
+  } catch (error: any) {
     await rollbackRuntime();
+    // Enrich error with manual instructions
+    if (error) {
+      error.instructions = generateManualInstructions(name, runtimeOps);
+    }
     throw error;
   }
 }

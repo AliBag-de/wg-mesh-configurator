@@ -1,5 +1,7 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
+
 import { useMeshStore } from "@/lib/store";
 import { ProvisioningPanel } from "@/components/features/ProvisioningPanel";
 import { DashboardLayout } from "@/components/features/DashboardLayout";

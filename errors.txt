@@ -1,0 +1,37 @@
+app/provisioning/page.tsx(494,42): error TS2304: Cannot find name 'Badge'.
+app/provisioning/page.tsx(494,194): error TS2304: Cannot find name 'Badge'.
+components/features/ProvisioningPanel.tsx(805,78): error TS2304: Cannot find name 'expandedPeerId'.
+components/features/ProvisioningPanel.tsx(808,41): error TS2304: Cannot find name 'expandedPeerId'.
+components/features/ProvisioningPanel.tsx(809,39): error TS2304: Cannot find name 'setExpandedPeerId'.
+components/features/ProvisioningPanel.tsx(810,39): error TS2304: Cannot find name 'setPushTargets'.
+components/features/ProvisioningPanel.tsx(811,39): error TS2304: Cannot find name 'setPushStatus'.
+components/features/ProvisioningPanel.tsx(813,39): error TS2304: Cannot find name 'setExpandedPeerId'.
+components/features/ProvisioningPanel.tsx(814,39): error TS2304: Cannot find name 'setPushTargets'.
+components/features/ProvisioningPanel.tsx(815,39): error TS2304: Cannot find name 'setPushStatus'.
+components/features/ProvisioningPanel.tsx(819,36): error TS2304: Cannot find name 'expandedPeerId'.
+components/features/ProvisioningPanel.tsx(836,26): error TS2304: Cannot find name 'expandedPeerId'.
+components/features/ProvisioningPanel.tsx(851,50): error TS2304: Cannot find name 'pushTargets'.
+components/features/ProvisioningPanel.tsx(852,41): error TS2322: Type '{ checked: any; onCheckedChange: (checked: any) => void; }' is not assignable to type 'IntrinsicAttributes & InputHTMLAttributes<HTMLInputElement> & RefAttributes<HTMLInputElement>'.
+  Property 'onCheckedChange' does not exist on type 'IntrinsicAttributes & InputHTMLAttributes<HTMLInputElement> & RefAttributes<HTMLInputElement>'.
+components/features/ProvisioningPanel.tsx(852,59): error TS7006: Parameter 'checked' implicitly has an 'any' type.
+components/features/ProvisioningPanel.tsx(853,43): error TS2304: Cannot find name 'setPushTargets'.
+components/features/ProvisioningPanel.tsx(853,58): error TS7006: Parameter 'prev' implicitly has an 'any' type.
+components/features/ProvisioningPanel.tsx(853,111): error TS7006: Parameter 't' implicitly has an 'any' type.
+components/features/ProvisioningPanel.tsx(860,40): error TS2304: Cannot find name 'pushStatus'.
+components/features/ProvisioningPanel.tsx(862,44): error TS2304: Cannot find name 'pushStatus'.
+components/features/ProvisioningPanel.tsx(862,90): error TS2304: Cannot find name 'pushStatus'.
+components/features/ProvisioningPanel.tsx(864,47): error TS2304: Cannot find name 'pushStatus'.
+components/features/ProvisioningPanel.tsx(880,49): error TS2304: Cannot find name 'pushStatus'.
+components/features/ProvisioningPanel.tsx(880,80): error TS18046: 's' is of type 'unknown'.
+components/features/ProvisioningPanel.tsx(880,104): error TS18046: 's' is of type 'unknown'.
+components/features/ProvisioningPanel.tsx(891,42): error TS18046: 'status' is of type 'unknown'.
+components/features/ProvisioningPanel.tsx(902,39): error TS2304: Cannot find name 'setExpandedPeerId'.
+components/features/ProvisioningPanel.tsx(903,39): error TS2304: Cannot find name 'setPushTargets'.
+components/features/ProvisioningPanel.tsx(904,39): error TS2304: Cannot find name 'setPushStatus'.
+components/features/ProvisioningPanel.tsx(906,47): error TS2304: Cannot find name 'isPushing'.
+components/features/ProvisioningPanel.tsx(912,46): error TS2304: Cannot find name 'pushToRemotes'.
+components/features/ProvisioningPanel.tsx(913,47): error TS2304: Cannot find name 'pushTargets'.
+components/features/ProvisioningPanel.tsx(913,75): error TS2304: Cannot find name 'isPushing'.
+components/features/ProvisioningPanel.tsx(915,38): error TS2304: Cannot find name 'isPushing'.
+components/features/ProvisioningPanel.tsx(916,46): error TS2304: Cannot find name 'pushTargets'.
+components/features/ProvisioningPanel.tsx(916,73): error TS2304: Cannot find name 'pushTargets'.

@@ -11,17 +11,7 @@ type ParsedCidr = {
   last: number;
 };
 
-import { ipToInt, intToIp, parseCidr } from "./ip-utils";
-
-const MAX_IPV4 = 0xffffffff;
-
-function formatEndpoint(endpoint: string, version: "ipv4" | "ipv6", port: number) {
-  if (version === "ipv6") {
-    const trimmed = endpoint.replace(/^\[|\]$/g, "");
-    return `[${trimmed}]:${port}`;
-  }
-  return `${endpoint}:${port}`;
-}
+import { ipToInt, intToIp, parseCidr, formatEndpoint } from "./ip-utils";
 
 function safeName(name: string) {
   return name.trim().replace(/[^a-zA-Z0-9_-]+/g, "_");
@@ -212,7 +202,7 @@ export function generateNodeConfig(
     // and cryptokey routing integrity in the mesh.
     const allowedIps = `${peerIp}/32`;
 
-    const peerEndpoint = peer.endpoint ? formatEndpoint(peer.endpoint, config.endpointVersion, peer.listenPort) : null;
+    const peerEndpoint = peer.endpoint ? formatEndpoint(peer.endpoint, peer.listenPort) : null;
 
     lines.push(
       "",
@@ -243,8 +233,27 @@ export function generateNodeConfig(
   return lines.join("\n");
 }
 
-export function generateSetupScript(nodeName: string, interfaceName: string, enableBabel: boolean): string {
+export function generateSetupScript(nodeName: string, interfaceName: string, enableBabel: boolean, nodeEndpoint?: string): string {
   const confFile = `${safeName(interfaceName)}.conf`;
+
+  // Extract clean IP from endpoint (could be IP:PORT or [IPV6]:PORT)
+  let cleanIp = "";
+  if (nodeEndpoint) {
+    if (nodeEndpoint.startsWith("[")) {
+      const lastBracket = nodeEndpoint.indexOf("]");
+      if (lastBracket > -1) {
+        cleanIp = nodeEndpoint.substring(1, lastBracket);
+      } else {
+        cleanIp = nodeEndpoint.replace(/[\[\]]/g, "");
+      }
+    } else if (nodeEndpoint.includes(":") && nodeEndpoint.indexOf(":") === nodeEndpoint.lastIndexOf(":")) {
+      // Exactly one colon - likely IPv4:PORT or Domain:PORT
+      cleanIp = nodeEndpoint.split(":")[0];
+    } else {
+      // Multiple colons (IPv6 without brackets) or no colons (just IP/Domain)
+      cleanIp = nodeEndpoint;
+    }
+  }
 
   return [
     "#!/bin/bash",
@@ -252,17 +261,33 @@ export function generateSetupScript(nodeName: string, interfaceName: string, ena
     `IFACE="${interfaceName}"`,
     `CONF_FILE="${confFile}"`,
     "CONFIG_DIR=\"/etc/wireguard\"",
+    `ENDPOINT_IP="${cleanIp}"`,
     "",
     `echo "[*] Configuring node: ${nodeName}"`,
     "",
     "if [ \"$EUID\" -ne 0 ]; then echo \"[!] Please run as root\"; exit 1; fi",
     "",
     "# Dynamic Interface Detection",
-    "echo \"[*] Detecting default network interface...\"",
-    "DETECTED_IFACE=$(ip route | grep default | awk '{print $5}' | head -n1)",
+    "echo \"[*] Detecting network interface...\"",
+    "DETECTED_IFACE=\"\"",
+    "",
+    "# 1. Try to find interface by Endpoint IP if provided",
+    "if [ -n \"$ENDPOINT_IP\" ]; then",
+    "  echo \"[*] Searching for interface with IP: $ENDPOINT_IP...\"",
+    "  # Use ip -o addr to find the interface name that has this IP",
+    "  DETECTED_IFACE=$(ip -o addr show | grep \" $ENDPOINT_IP\" | awk '{print $2}' | head -n1)",
+    "fi",
+    "",
+    "# 2. Fallback to default route if no IP match found",
+    "if [ -z \"$DETECTED_IFACE\" ]; then",
+    "  echo \"[*] Falling back to default route detection...\"",
+    "  DETECTED_IFACE=$(ip route | grep default | awk '{print $5}' | head -n1)",
+    "fi",
+    "",
+    "# 3. Final fallback to eth0",
     "if [ -z \"$DETECTED_IFACE\" ]; then",
     "  DETECTED_IFACE=\"eth0\"",
-    "  echo \"[!] Could not detect default interface, falling back to eth0\"",
+    "  echo \"[!] Could not detect interface, falling back to eth0\"",
     "else",
     "  echo \"[+] Detected interface: $DETECTED_IFACE\"",
     "fi",
@@ -325,7 +350,8 @@ export function composeNodeAssets(
   interfaceName: string,
   enableBabel: boolean,
   networkCidr: string,
-  nodeConfig: string
+  nodeConfig: string,
+  nodeEndpoint?: string
 ): { name: string; content: string }[] {
   const assets: { name: string; content: string }[] = [
     { name: `${safeName(interfaceName)}.conf`, content: nodeConfig }
@@ -335,7 +361,7 @@ export function composeNodeAssets(
     assets.push({ name: "babeld.conf", content: generateBabelConfig(interfaceName, networkCidr) });
   }
 
-  assets.push({ name: "setup.sh", content: generateSetupScript(nodeName, interfaceName, enableBabel) });
+  assets.push({ name: "setup.sh", content: generateSetupScript(nodeName, interfaceName, enableBabel, nodeEndpoint) });
 
   return assets;
 }
@@ -409,7 +435,7 @@ export async function generateZip(payload: GeneratePayload) {
       getPsk
     );
 
-    const assets = composeNodeAssets(node.name, interfaceName, !!enableBabel, networkCidr, nodeConfig);
+    const assets = composeNodeAssets(node.name, interfaceName, !!enableBabel, networkCidr, nodeConfig, node.endpoint);
     assets.forEach(asset => {
       zip.file(`nodes/${safeName(node.name)}/${asset.name}`, asset.content);
     });
@@ -453,7 +479,6 @@ export async function generateZip(payload: GeneratePayload) {
         `AllowedIPs = ${networkCidr}`,
         `Endpoint = ${formatEndpoint(
           gateway.endpoint,
-          endpointVersion,
           gateway.listenPort
         )}`,
         `PersistentKeepalive = ${persistentKeepalive}`
@@ -534,5 +559,5 @@ export function generateNodeAssets(
     getPsk
   );
   // 2. Compose all assets (Config, Babel, Setup)
-  return composeNodeAssets(node.name, interfaceName, !!enableBabel, p.networkCidr, nodeConfig);
+  return composeNodeAssets(node.name, interfaceName, !!enableBabel, p.networkCidr, nodeConfig, node.endpoint);
 }

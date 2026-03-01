@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { ClientInput, EndpointVersion, NodeInput } from "./types";
+import { Peer } from "./provisioning/contracts";
 
 type MeshState = {
   networkCidr: string;
@@ -17,6 +18,10 @@ type MeshState = {
   mtu: number;
   sshHosts: any[];
   sshKeys: Record<string, string>;
+  provisioningState: {
+    selectedInterface: string | null;
+    draftPeers: Record<string, Peer[]>;
+  };
   setNetworkCidr: (value: string) => void;
   setEndpointVersion: (value: EndpointVersion) => void;
   setInterfaceName: (value: string) => void;
@@ -35,6 +40,7 @@ type MeshState = {
   setMtu: (value: number) => void;
   setSshHosts: (value: any[]) => void;
   setSshKeys: (value: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
+  setProvisioningState: (value: Partial<{ selectedInterface: string | null; draftPeers: Record<string, Peer[]> }>) => void;
   reorderNodes: (newNodes: NodeInput[]) => void;
   reorderClients: (newClients: ClientInput[]) => void;
   resetAll: () => void;
@@ -78,7 +84,11 @@ const defaultState = () => ({
   gatewayTouched: false,
   mtu: 1420,
   sshHosts: [],
-  sshKeys: {}
+  sshKeys: {},
+  provisioningState: {
+    selectedInterface: null,
+    draftPeers: {}
+  }
 });
 
 export const useMeshStore = create<MeshState>()(
@@ -111,6 +121,9 @@ export const useMeshStore = create<MeshState>()(
       setSshKeys: (value) => set((state) => ({
         sshKeys: typeof value === "function" ? value(state.sshKeys) : value
       })),
+      setProvisioningState: (value) => set((state) => ({
+        provisioningState: { ...state.provisioningState, ...value }
+      })),
       reorderNodes: (newNodes) => set({ nodes: newNodes }),
       reorderClients: (newClients) => set({ clients: newClients }),
       resetAll: () => set(defaultState()),
@@ -141,7 +154,8 @@ export const useMeshStore = create<MeshState>()(
         clients: state.clients,
         gatewayNodeNames: state.gatewayNodeNames,
         gatewayTouched: state.gatewayTouched,
-        mtu: state.mtu
+        mtu: state.mtu,
+        provisioningState: state.provisioningState
         // sshHosts and sshKeys are EXCLUDED here for security (no persistence)
       })
     }

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveMeshState } from "@/lib/generate";
 import { deployMeshConfig } from "@/lib/provisioning/service";
 import { GeneratePayload } from "@/lib/types";
+import { formatEndpoint } from "@/lib/ip-utils";
+
+import { apiError } from "@/lib/provisioning/response";
 
 export async function POST(req: NextRequest) {
     try {
@@ -13,11 +16,11 @@ export async function POST(req: NextRequest) {
         // 2. Find the target node configuration
         const targetNode = resolvedNodes.find(n => n.name === nodeName);
         if (!targetNode) {
-            return NextResponse.json({ error: "Node not found in configuration" }, { status: 404 });
+            return apiError(404, { code: "NODE_NOT_FOUND", message: "Node not found in configuration" });
         }
 
         if (!targetNode.privateKey) {
-            return NextResponse.json({ error: "Node has no private key. Generate keys first." }, { status: 400 });
+            return apiError(400, { code: "KEYS_REQUIRED", message: "Node has no private key. Generate keys first." });
         }
 
         // 3. Prepare config for deployment
@@ -39,7 +42,7 @@ export async function POST(req: NextRequest) {
                 name: node.name,
                 publicKey: node.publicKey,
                 allowedIps: [node.address.split("/")[0] + "/32"],
-                endpoint: node.endpoint ? `${node.endpoint}:${node.listenPort}` : undefined
+                endpoint: node.endpoint ? formatEndpoint(node.endpoint, node.listenPort) : undefined
             });
         });
 
@@ -53,10 +56,12 @@ export async function POST(req: NextRequest) {
         });
 
         await deployMeshConfig(config);
-
         return NextResponse.json({ success: true, message: `Deployment for ${nodeName} successful.` });
-    } catch (error) {
+    } catch (error: any) {
         console.error(error);
-        return NextResponse.json({ error: error instanceof Error ? error.message : "Internal Error" }, { status: 500 });
+        return apiError(500, {
+            code: "DEPLOY_FAILED",
+            message: error instanceof Error ? error.message : "Internal Error"
+        }, error);
     }
 }

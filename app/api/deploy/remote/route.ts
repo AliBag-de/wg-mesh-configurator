@@ -84,7 +84,11 @@ export async function POST(req: NextRequest) {
                 }
 
                 if (!result.success) {
-                    sendEvent({ log: `\n[Fatal] Remote operation failed.\n`, error: "Operation failed", status: "error" });
+                    sendEvent({
+                        log: result.log + `\n[Fatal] Remote operation failed.\n`,
+                        error: "Operation failed",
+                        status: "error"
+                    });
                     controller.close();
                     return;
                 }

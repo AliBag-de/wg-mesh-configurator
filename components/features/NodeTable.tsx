@@ -10,6 +10,8 @@ import { EndpointVersion } from "@/lib/types";
 import { AnimatePresence, motion, Reorder } from "framer-motion";
 import { colorForKey } from "@/lib/color";
 import { useState, useMemo } from "react";
+import { calculateNodeIp } from "@/lib/ip-utils";
+import { useMeshStore } from "@/lib/store";
 
 interface NodeTableProps {
     nodes: NodeInput[];
@@ -37,6 +39,7 @@ export function NodeTable({
     endpointVersion,
     sshHosts = [],
 }: NodeTableProps) {
+    const { networkCidr } = useMeshStore();
     const [sortKey, setSortKey] = useState<SortKey>("manual");
     const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -271,7 +274,13 @@ export function NodeTable({
                                                 <Input
                                                     value={node.wgIp ?? ""}
                                                     onChange={(e) => updateNode(node.id, { wgIp: e.target.value })}
-                                                    placeholder={`10.20.0.${index + 1}`}
+                                                    placeholder={(() => {
+                                                        try {
+                                                            return calculateNodeIp(networkCidr, index);
+                                                        } catch {
+                                                            return "10.20.0.x";
+                                                        }
+                                                    })()}
                                                     className="h-8 text-xs font-mono px-2.5 bg-black/20 border-border/40 focus:border-primary/50 focus:bg-background/80 transition-all"
                                                 />
                                             </td>

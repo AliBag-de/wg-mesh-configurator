@@ -59,3 +59,31 @@ export function calculateClientIp(networkCidr: string, index: number): string {
 
     return intToIp(clientIpInt);
 }
+
+/**
+ * Calculates the IP address for a node based on the network CIDR and node index.
+ * Nodes start at base + 1.
+ */
+export function calculateNodeIp(networkCidr: string, index: number): string {
+    const parsed = parseCidr(networkCidr);
+    const nodeStart = parsed.base + 1;
+    const nodeIpInt = nodeStart + index;
+
+    if (nodeIpInt > parsed.last) {
+        throw new Error("Node IP falls outside of the network CIDR range.");
+    }
+
+    return intToIp(nodeIpInt);
+}
+
+export function isIpv6(host: string): boolean {
+    return host.includes(":");
+}
+
+export function formatEndpoint(host: string, port: number): string {
+    const cleanHost = host.replace(/^\[|\]$/g, "");
+    if (isIpv6(cleanHost)) {
+        return `[${cleanHost}]:${port}`;
+    }
+    return `${cleanHost}:${port}`;
+}

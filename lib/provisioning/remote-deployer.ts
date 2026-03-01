@@ -4,6 +4,7 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import * as os from "os";
 import { randomUUID } from "crypto";
+import { isSudoPasswordError, getSudoInstruction } from "./response";
 
 const execFileAsync = promisify(execFile);
 
@@ -56,7 +57,8 @@ export class RemoteDeployer {
                     await fs.writeFile(filePath, file.content, { mode: 0o600 });
                 }
 
-                const remoteTempDir = `/tmp/wg_deploy_${interfaceName}`;
+                const timestamp = Date.now();
+                const remoteTempDir = `/tmp/wg_deploy_${interfaceName}_${timestamp}`;
                 const isIpv6 = host.includes(":");
                 const formattedHost = isIpv6 ? `[${host}]` : host;
 
@@ -83,8 +85,65 @@ export class RemoteDeployer {
             }
 
         } catch (error: any) {
-            log += `[ERROR] Deployment failed: ${error.message}\n`;
-            if (error.stderr) log += `[ERROR STDERR] ${error.stderr}\n`;
+            const errorText = error.stderr || error.message || "";
+            let errorMsg = `[ERROR] Deployment failed: ${error.message}\n`;
+
+            if (isSudoPasswordError(errorText)) {
+                errorMsg += `\n${getSudoInstruction(user)}\n`;
+            } else if (error.stderr) {
+                errorMsg += `[ERROR STDERR] ${error.stderr}\n`;
+            }
+
+            appendLog(errorMsg);
+            return { success: false, log };
+        } finally {
+            if (tempKeyFile) {
+                await fs.unlink(tempKeyFile).catch(() => { });
+            }
+        }
+    }
+
+    /**
+     * Executes a raw command on the remote host via SSH.
+     */
+    async executeRawCommand(options: { host: string; port: number; user: string; privateKeyContent?: string; command: string; onLog?: (msg: string) => void }): Promise<{ success: boolean; log: string }> {
+        const { host, port, user, privateKeyContent, command, onLog } = options;
+        let log = "";
+        let tempKeyFile: string | null = null;
+
+        const appendLog = (msg: string) => {
+            log += msg;
+            if (onLog) onLog(msg);
+        };
+
+        const isIpv6 = host.includes(":");
+        const formattedHost = isIpv6 ? `[${host}]` : host;
+
+        try {
+            const sshArgs = ["-p", port.toString(), "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes"];
+            if (privateKeyContent) {
+                tempKeyFile = path.join(os.tmpdir(), `wg_key_raw_${randomUUID()}`);
+                await fs.writeFile(tempKeyFile, privateKeyContent, { mode: 0o600 });
+                sshArgs.push("-i", tempKeyFile);
+            }
+
+            const { stdout, stderr } = await execFileAsync("ssh", [...sshArgs, `${user}@${formattedHost}`, command], { timeout: 30000 });
+
+            if (stdout) appendLog(stdout + "\n");
+            if (stderr) appendLog(`[STDERR]: ${stderr}\n`);
+
+            return { success: true, log };
+        } catch (err: any) {
+            const errorText = err.stderr || err.message || "";
+            let errorMsg = `[ERROR] Execution failed: ${err.message}\n`;
+
+            if (isSudoPasswordError(errorText)) {
+                errorMsg += `\n${getSudoInstruction(user)}\n`;
+            } else if (err.stderr) {
+                errorMsg += `[STDERR]: ${err.stderr}\n`;
+            }
+
+            appendLog(errorMsg);
             return { success: false, log };
         } finally {
             if (tempKeyFile) {
@@ -106,7 +165,6 @@ export class RemoteDeployer {
             if (onLog) onLog(msg);
         };
 
-        const remoteTempDir = `/tmp/wg_deploy_${interfaceName}`;
         const isIpv6 = host.includes(":");
         const formattedHost = isIpv6 ? `[${host}]` : host;
 
@@ -118,7 +176,18 @@ export class RemoteDeployer {
                 sshArgs.push("-i", tempKeyFile);
             }
 
-            appendLog(`[SSH] Executing setup script on ${host}...\n`);
+            // 1. Resolve the most recent deployment directory for this interface
+            appendLog(`[SSH] Troubleshooting remote directory for ${interfaceName}...\n`);
+            const resolveCmd = `ls -td /tmp/wg_deploy_${interfaceName}_* 2>/dev/null | head -n 1`;
+            const { stdout: resolvedPath } = await execFileAsync("ssh", [...sshArgs, `${user}@${formattedHost}`, resolveCmd], { timeout: 10000 });
+
+            const remoteTempDir = resolvedPath.trim();
+            if (!remoteTempDir) {
+                throw new Error(`Could not find a deployment directory for ${interfaceName} on the remote host. Please run "Upload" first.`);
+            }
+
+            appendLog(`[SSH] Found deployment directory: ${remoteTempDir}\n`);
+            appendLog(`[SSH] Executing setup script...\n`);
             const manualCmd = `cd ${remoteTempDir} && sudo bash ./setup.sh`;
 
             const { stdout: setupOut, stderr: setupErr } = await execFileAsync("ssh", [...sshArgs, `${user}@${formattedHost}`, manualCmd], { timeout: 60000 });
@@ -151,8 +220,16 @@ export class RemoteDeployer {
             return { success: true, log };
 
         } catch (err: any) {
-            appendLog(`[ERROR] Execution failed: ${err.message}\n`);
-            if (err.stderr) appendLog(`[STDERR]: ${err.stderr}\n`);
+            const errorText = err.stderr || err.message || "";
+            let errorMsg = `[ERROR] Execution failed: ${err.message}\n`;
+
+            if (isSudoPasswordError(errorText)) {
+                errorMsg += `\n${getSudoInstruction(user)}\n`;
+            } else if (err.stderr) {
+                errorMsg += `[STDERR]: ${err.stderr}\n`;
+            }
+
+            appendLog(errorMsg);
             return { success: false, log };
         } finally {
             if (tempKeyFile) {

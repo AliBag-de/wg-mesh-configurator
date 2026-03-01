@@ -1,19 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Fragment } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatBytes, cn } from "@/lib/utils";
 import { Peer } from "@/lib/provisioning/contracts";
-import { RefreshCw, Server, Plus, Trash2, Play, RotateCcw, CheckCircle2, Activity, ArrowUp, ArrowDown, Clock, Copy, Eye, EyeOff } from "lucide-react";
+import { RefreshCw, Server, Plus, Trash2, Play, RotateCcw, CheckCircle2, Activity, ArrowUp, ArrowDown, Clock, Copy, Eye, EyeOff, Send, ChevronDown, ShieldAlert, Globe } from "lucide-react";
 import { toast } from "sonner";
 import { generateKeypair } from "@/lib/wg-utils";
 import { parseCidr, intToIp } from "@/lib/ip-utils";
 import { useMeshStore } from "@/lib/store";
 import { NodeInput, ClientInput } from "@/lib/types";
-
+import { AddMeshPeerModal } from "./AddMeshPeerModal";
 type InterfaceSummary = {
   name: string;
   isUp: boolean;
@@ -180,13 +180,34 @@ function buildOperations(interfaceName: string, serverPeers: Peer[], draftPeers:
 
 export function ProvisioningPanel() {
   const [interfaces, setInterfaces] = useState<InterfaceSummary[]>([]);
-  const [selectedInterface, setSelectedInterface] = useState<string | null>(null);
   const [details, setDetails] = useState<InterfaceDetails | null>(null);
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [serverPeers, setServerPeers] = useState<Peer[]>([]);
-  const [draftPeers, setDraftPeers] = useState<Peer[]>([]);
+
+  const provisioningState = useMeshStore((state: any) => state.provisioningState);
+  const setProvisioningState = useMeshStore((state: any) => state.setProvisioningState);
+
+  const selectedInterface = provisioningState?.selectedInterface || null;
+  const setSelectedInterface = (name: string | null) => setProvisioningState({ selectedInterface: name });
+
+  const draftPeers: Peer[] = (selectedInterface && provisioningState?.draftPeers?.[selectedInterface]) || [];
+  const setDraftPeers = (updater: Peer[] | ((prev: Peer[]) => Peer[])) => {
+    if (!selectedInterface) return;
+    const next = typeof updater === "function" ? updater(draftPeers) : updater;
+    setProvisioningState({
+      draftPeers: { ...provisioningState.draftPeers, [selectedInterface]: next }
+    });
+  };
   const [runtimeByKey, setRuntimeByKey] = useState<Record<string, RuntimeStats>>({});
   const [dryRun, setDryRun] = useState<DryRunResult | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [applyErrorData, setApplyErrorData] = useState<{ message: string; instructions?: string } | null>(null);
+
+  // Push to remote states
+  const [expandedPeerId, setExpandedPeerId] = useState<string | null>(null);
+  const [pushTargets, setPushTargets] = useState<string[]>([]);
+  const [pushStatus, setPushStatus] = useState<Record<string, { status: "pending" | "running" | "success" | "error"; log?: string; instructions?: string }>>({});
+  const [isPushing, setIsPushing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [audit, setAudit] = useState<Array<{ id: string; at: string; action: string; peerId?: string }>>([]);
 
@@ -221,7 +242,7 @@ export function ProvisioningPanel() {
     }
   };
 
-  const loadDetails = async (name: string) => {
+  const loadDetails = async (name: string, forceOverwriteDrafts = false) => {
     const data = await apiRequest<InterfaceDetails>(`/api/interface/${encodeURIComponent(name)}`);
     const peers = data.peers.map((peer: any) => {
       const { runtime, ...rest } = peer;
@@ -235,7 +256,14 @@ export function ProvisioningPanel() {
 
     setDetails(data);
     setServerPeers(peers);
-    setDraftPeers(peers.map((peer: Peer) => ({ ...peer })));
+
+    const globalState = useMeshStore.getState().provisioningState;
+    if (forceOverwriteDrafts || !globalState?.draftPeers?.[name]) {
+      useMeshStore.getState().setProvisioningState({
+        draftPeers: { ...(globalState?.draftPeers || {}), [name]: peers.map((peer: Peer) => ({ ...peer })) }
+      });
+    }
+
     setRuntimeByKey(runtimeMap);
     setDryRun(null);
   };
@@ -308,6 +336,21 @@ export function ProvisioningPanel() {
         interface: selectedInterface
       }
     ]);
+  };
+
+  const handleImportPeers = (importedPeers: Partial<Peer>[]) => {
+    setDraftPeers((prev: Peer[]) => {
+      const fullPeers = importedPeers.map(p => ({
+        peerId: p.peerId || crypto.randomUUID(),
+        name: p.name,
+        publicKey: p.publicKey || "",
+        allowedIps: p.allowedIps || [],
+        endpoint: p.endpoint || "",
+        persistentKeepalive: p.persistentKeepalive || 25,
+        isActive: true,
+      } as Peer));
+      return [...prev, ...fullPeers];
+    });
   };
 
   const validateDraft = () => {
@@ -388,7 +431,7 @@ export function ProvisioningPanel() {
             })
           }
         );
-        await loadDetails(selectedInterface);
+        await loadDetails(selectedInterface, true);
         await loadAudit(selectedInterface);
         toast.success("Provisioning changes applied.");
       });
@@ -414,7 +457,7 @@ export function ProvisioningPanel() {
             })
           }
         );
-        await loadDetails(selectedInterface);
+        await loadDetails(selectedInterface, true);
         await loadAudit(selectedInterface);
         toast.success(`Reconcile completed (${mode}).`);
       });
@@ -443,7 +486,7 @@ export function ProvisioningPanel() {
             dryRun: false
           })
         });
-        await loadDetails(selectedInterface);
+        await loadDetails(selectedInterface, true);
         await loadAudit(selectedInterface);
         toast.success(`Interface is now ${next ? "UP" : "DOWN"}.`);
       });
@@ -451,6 +494,66 @@ export function ProvisioningPanel() {
       toast.error(error instanceof Error ? error.message : "Interface toggle failed.");
     } finally {
       setBusy(false);
+    }
+  };
+  const pushToRemotes = async () => {
+    if (!expandedPeerId || pushTargets.length === 0 || !selectedInterface) return;
+    const peer = draftPeers.find(p => p.peerId === expandedPeerId);
+    if (!peer) return;
+
+    setIsPushing(true);
+    setPushStatus({});
+
+    try {
+      const response = await fetch('/api/deploy/peer/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceNodeName: selectedInterface,
+          targetNodeNames: pushTargets,
+          peer: {
+            publicKey: peer.publicKey,
+            allowedIps: peer.allowedIps,
+            endpoint: peer.endpoint,
+            persistentKeepalive: peer.persistentKeepalive
+          }
+        })
+      });
+
+      if (!response.body) throw new Error("No response body");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunks = decoder.decode(value).split('\n\n');
+        for (const chunk of chunks) {
+          if (!chunk.trim() || !chunk.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(chunk.replace('data: ', ''));
+            setPushStatus(prev => {
+              const current = prev[data.target] || { status: 'pending' };
+              return {
+                ...prev,
+                [data.target]: {
+                  status: data.status,
+                  log: data.log ? (current.log ? current.log + '\n' + data.log : data.log) : current.log,
+                  instructions: data.instructions || current.instructions
+                }
+              };
+            });
+          } catch (e) {
+            // Ignoring partial stream parses
+          }
+        }
+      }
+    } catch (error) {
+      toast.error("Push failed: " + (error instanceof Error ? error.message : "Unknown error"));
+    } finally {
+      setIsPushing(false);
+      await loadDetails(selectedInterface);
     }
   };
 
@@ -543,7 +646,7 @@ export function ProvisioningPanel() {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <Button size="sm" variant="outline" className="h-9 font-semibold shadow-sm" onClick={() => loadDetails(selectedInterface!)} disabled={busy}>
+                  <Button size="sm" variant="outline" className="h-9 font-semibold shadow-sm" onClick={() => loadDetails(selectedInterface!, true)} disabled={busy}>
                     <RefreshCw className={cn("h-4 w-4 mr-2", busy && "animate-spin")} />
                     Refresh
                   </Button>
@@ -661,9 +764,13 @@ export function ProvisioningPanel() {
                 Pending ops: <span className="font-mono text-foreground">{operations.length}</span>
               </div>
               <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy || !details} onClick={() => setIsImportModalOpen(true)}>
+                  <Globe className="h-3 w-3 mr-1.5" />
+                  Import from Mesh
+                </Button>
                 <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy || !details} onClick={addDraftPeer}>
                   <Plus className="h-3 w-3 mr-1.5" />
-                  Add Peer
+                  Add Node/Peer
                 </Button>
                 <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy || !details} onClick={() => setDraftPeers(serverPeers.map((peer) => ({ ...peer })))}>
                   <RotateCcw className="h-3 w-3 mr-1.5" />
@@ -699,115 +806,230 @@ export function ProvisioningPanel() {
                     const stats = runtimeByKey[peer.publicKey] || { latestHandshake: 0, transferRx: 0, transferTx: 0 };
                     const existing = serverPeers.some((item) => item.peerId === peer.peerId);
                     return (
-                      <tr key={peer.peerId} className={`hover:bg-muted/10 ${peer.isUnmanaged ? 'bg-amber-500/5' : ''}`}>
-                        <td className="px-3 py-2 text-center font-mono text-muted-foreground">{index + 1}</td>
-                        <td className="px-3 py-2 text-center">
-                          <Checkbox
-                            checked={peer.isActive}
-                            disabled={peer.isUnmanaged}
-                            onChange={(e) => updateDraftPeer(peer.peerId, { isActive: e.target.checked })}
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-2">
-                              <div className="relative flex-1">
-                                <div className={cn(
-                                  "absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full shadow-sm z-10",
-                                  stats.latestHandshake > Date.now() / 1000 - 180 ? "bg-emerald-500 shadow-emerald-500/50" : "bg-zinc-300"
-                                )} />
-                                <Input
-                                  value={peer.name}
-                                  disabled={peer.isUnmanaged}
-                                  onChange={(e) => updateDraftPeer(peer.peerId, { name: e.target.value })}
-                                  className="h-7 text-xs bg-background/50 border-transparent focus:border-primary/50 pl-5 w-full font-medium"
-                                />
+                      <Fragment key={peer.peerId}>
+                        <tr className={`hover:bg-muted/10 ${peer.isUnmanaged ? 'bg-amber-500/5' : ''}`}>
+                          <td className="px-3 py-2 text-center font-mono text-muted-foreground">{index + 1}</td>
+                          <td className="px-3 py-2 text-center">
+                            <Checkbox
+                              checked={peer.isActive}
+                              disabled={peer.isUnmanaged}
+                              onChange={(e) => updateDraftPeer(peer.peerId, { isActive: e.target.checked })}
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-2">
+                                <div className="relative flex-1">
+                                  <div className={cn(
+                                    "absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full shadow-sm z-10",
+                                    stats.latestHandshake > Date.now() / 1000 - 180 ? "bg-emerald-500 shadow-emerald-500/50" : "bg-zinc-300"
+                                  )} />
+                                  <Input
+                                    value={peer.name}
+                                    disabled={peer.isUnmanaged}
+                                    onChange={(e) => updateDraftPeer(peer.peerId, { name: e.target.value })}
+                                    className="h-7 text-xs bg-background/50 border-transparent focus:border-primary/50 pl-5 w-full font-medium"
+                                  />
+                                </div>
+                                {peer.designMeta && (
+                                  <Badge variant="outline" className="text-[9px] h-3.5 bg-green-500/10 text-green-700 border-green-500/20 px-1 whitespace-nowrap">
+                                    {peer.designMeta.type}
+                                  </Badge>
+                                )}
                               </div>
-                              {peer.designMeta && (
-                                <Badge variant="outline" className="text-[9px] h-3.5 bg-green-500/10 text-green-700 border-green-500/20 px-1 whitespace-nowrap">
-                                  {peer.designMeta.type}
-                                </Badge>
+                              {peer.isUnmanaged && (
+                                <Badge variant="outline" className="w-fit text-[9px] h-4 bg-amber-500/10 text-amber-700 border-amber-500/20">Unmanaged</Badge>
                               )}
                             </div>
-                            {peer.isUnmanaged && (
-                              <Badge variant="outline" className="w-fit text-[9px] h-4 bg-amber-500/10 text-amber-700 border-amber-500/20">Unmanaged</Badge>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <Input
-                            value={peer.publicKey}
-                            onChange={(e) => updateDraftPeer(peer.peerId, { publicKey: e.target.value })}
-                            disabled={existing || peer.isUnmanaged}
-                            className="h-7 text-xs font-mono bg-background/50 border-transparent focus:border-primary/50"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <Input
-                            value={toAllowedIpsText(peer.allowedIps)}
-                            disabled={peer.isUnmanaged}
-                            onChange={(e) => updateDraftPeer(peer.peerId, { allowedIps: toAllowedIps(e.target.value) })}
-                            className="h-7 text-xs font-mono bg-background/50 border-transparent focus:border-primary/50"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <Input
-                            value={peer.endpoint || ""}
-                            disabled={peer.isUnmanaged}
-                            onChange={(e) => updateDraftPeer(peer.peerId, { endpoint: e.target.value })}
-                            className="h-7 text-xs font-mono bg-background/50 border-transparent focus:border-primary/50"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <Input
-                            type="number"
-                            value={peer.persistentKeepalive ?? ""}
-                            disabled={peer.isUnmanaged}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              updateDraftPeer(peer.peerId, {
-                                persistentKeepalive: value === "" ? undefined : Number(value)
-                              });
-                            }}
-                            className="h-7 text-xs font-mono bg-background/50 border-transparent focus:border-primary/50"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-3.5 w-3.5 text-muted-foreground/60" />
-                            <span className={cn(
-                              "font-mono text-[11px]",
-                              stats.latestHandshake > Date.now() / 1000 - 180 ? "text-emerald-600 font-semibold" : "text-muted-foreground"
-                            )}>
-                              {formatRelativeTime(stats.latestHandshake)}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex flex-col gap-1 justify-center min-h-[40px]">
-                            <div className="flex items-center gap-1.5">
-                              <ArrowDown className="h-3 w-3 text-emerald-600/70" />
-                              <span className="text-emerald-700/90 font-mono text-[10px]">{formatBytes(stats.transferRx)}</span>
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              value={peer.publicKey}
+                              onChange={(e) => updateDraftPeer(peer.peerId, { publicKey: e.target.value })}
+                              disabled={existing || peer.isUnmanaged}
+                              className="h-7 text-xs font-mono bg-background/50 border-transparent focus:border-primary/50"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              value={toAllowedIpsText(peer.allowedIps)}
+                              disabled={peer.isUnmanaged}
+                              onChange={(e) => updateDraftPeer(peer.peerId, { allowedIps: toAllowedIps(e.target.value) })}
+                              className="h-7 text-xs font-mono bg-background/50 border-transparent focus:border-primary/50"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              value={peer.endpoint || ""}
+                              disabled={peer.isUnmanaged}
+                              onChange={(e) => updateDraftPeer(peer.peerId, { endpoint: e.target.value })}
+                              className="h-7 text-xs font-mono bg-background/50 border-transparent focus:border-primary/50"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              type="number"
+                              value={peer.persistentKeepalive ?? ""}
+                              disabled={peer.isUnmanaged}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                updateDraftPeer(peer.peerId, {
+                                  persistentKeepalive: value === "" ? undefined : Number(value)
+                                });
+                              }}
+                              className="h-7 text-xs font-mono bg-background/50 border-transparent focus:border-primary/50"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <Clock className="h-3.5 w-3.5 text-muted-foreground/60" />
+                              <span className={cn(
+                                "font-mono text-[11px]",
+                                stats.latestHandshake > Date.now() / 1000 - 180 ? "text-emerald-600 font-semibold" : "text-muted-foreground"
+                              )}>
+                                {formatRelativeTime(stats.latestHandshake)}
+                              </span>
                             </div>
-                            <div className="flex items-center gap-1.5">
-                              <ArrowUp className="h-3 w-3 text-blue-600/70" />
-                              <span className="text-blue-700/90 font-mono text-[10px]">{formatBytes(stats.transferTx)}</span>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex flex-col gap-1 justify-center min-h-[40px]">
+                              <div className="flex items-center gap-1.5">
+                                <ArrowDown className="h-3 w-3 text-emerald-600/70" />
+                                <span className="text-emerald-700/90 font-mono text-[10px]">{formatBytes(stats.transferRx)}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <ArrowUp className="h-3 w-3 text-blue-600/70" />
+                                <span className="text-blue-700/90 font-mono text-[10px]">{formatBytes(stats.transferTx)}</span>
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          {!peer.isUnmanaged && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                              onClick={() => removeDraftPeer(peer.peerId)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {!peer.isUnmanaged && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className={cn("h-6 w-6 transition-colors", expandedPeerId === peer.peerId ? "bg-primary/20 text-primary hover:bg-primary/30 hover:text-primary" : "text-muted-foreground hover:text-primary")}
+                                  title="Push to Remotes"
+                                  onClick={() => {
+                                    if (expandedPeerId === peer.peerId) {
+                                      setExpandedPeerId(null);
+                                      setPushTargets([]);
+                                      setPushStatus({});
+                                    } else {
+                                      setExpandedPeerId(peer.peerId);
+                                      setPushTargets([]);
+                                      setPushStatus({});
+                                    }
+                                  }}
+                                >
+                                  {expandedPeerId === peer.peerId ? <ChevronDown className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
+                                </Button>
+                              )}
+                              {!peer.isUnmanaged && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                  onClick={() => removeDraftPeer(peer.peerId)}
+                                  title="Remove Peer"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {expandedPeerId === peer.peerId && (
+                          <tr className="bg-muted/5 border-b-0">
+                            <td colSpan={10} className="p-0 border-b-0">
+                              <div className="p-4 pl-12 bg-card border-x border-b shadow-inner">
+                                <div className="flex items-center gap-2 mb-3">
+                                  <Send className="h-4 w-4 text-primary" />
+                                  <h4 className="text-sm font-semibold">Push Peer to Remotes</h4>
+                                  <span className="text-xs text-muted-foreground ml-2">
+                                    Deploy <code className="bg-muted px-1 py-0.5 rounded">{peer.name || "Peer"}</code> directly to other active servers (via SSH).
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 mb-4">
+                                  {meshNodes.filter((n: NodeInput) => n.name !== selectedInterface && n.sshHost).map((node: NodeInput) => (
+                                    <label key={node.name} className="flex items-center gap-2 p-2 border rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
+                                      <Checkbox
+                                        checked={pushTargets.includes(node.name || "")}
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                          const checked = e.target.checked;
+                                          const nm = node.name || "";
+                                          setPushTargets(prev => checked ? [...prev, nm] : prev.filter(t => t !== nm));
+                                        }}
+                                      />
+                                      <div className="flex flex-col">
+                                        <span className="text-sm font-medium">{node.name}</span>
+                                        <span className="text-[10px] text-muted-foreground">{node.sshHost}</span>
+                                      </div>
+                                      {pushStatus[node.name] && (
+                                        <div className="ml-auto">
+                                          {pushStatus[node.name].status === 'pending' || pushStatus[node.name].status === 'running' ? (
+                                            <RefreshCw className="h-3.5 w-3.5 text-blue-500 animate-spin" />
+                                          ) : pushStatus[node.name].status === 'success' ? (
+                                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                                          ) : (
+                                            <Activity className="h-3.5 w-3.5 text-destructive" />
+                                          )}
+                                        </div>
+                                      )}
+                                    </label>
+                                  ))}
+                                  {meshNodes.filter((n: NodeInput) => n.name !== selectedInterface && n.sshHost).length === 0 && (
+                                    <div className="col-span-full text-xs text-muted-foreground italic p-2 border border-dashed rounded-md bg-muted/10">
+                                      No other Nodes with SSH credentials available in Mesh Design.
+                                    </div>
+                                  )}
+                                </div>
+
+                                {Object.entries(pushStatus).filter(([_, s]) => s.status === 'error' && s.instructions).map(([target, status]) => (
+                                  <div key={target} className="mb-4 rounded-md border border-destructive/20 bg-destructive/10 p-3">
+                                    <div className="flex items-center gap-2 text-destructive mb-2">
+                                      <ShieldAlert className="h-4 w-4" />
+                                      <span className="text-sm font-semibold">Permission Error on {target}</span>
+                                    </div>
+                                    <p className="text-xs text-destructive/90 mb-2">
+                                      Automatic push failed. Please manually run these commands on <strong>{target}</strong>:
+                                    </p>
+                                    <div className="relative group">
+                                      <pre className="text-[10px] bg-background/80 p-2.5 rounded border overflow-x-auto break-all whitespace-pre-wrap font-mono text-muted-foreground">
+                                        {status.instructions}
+                                      </pre>
+                                    </div>
+                                  </div>
+                                ))}
+
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setExpandedPeerId(null);
+                                      setPushTargets([]);
+                                      setPushStatus({});
+                                    }}
+                                    disabled={isPushing}
+                                  >
+                                    Close
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={pushToRemotes}
+                                    disabled={pushTargets.length === 0 || isPushing}
+                                  >
+                                    {isPushing && <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                                    Push to {pushTargets.length} Remote{pushTargets.length !== 1 ? 's' : ''}
+                                  </Button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -839,6 +1061,17 @@ export function ProvisioningPanel() {
               </div>
             </div>
           </>
+        )}
+
+        {isImportModalOpen && (
+          <AddMeshPeerModal
+            isOpen={isImportModalOpen}
+            onClose={() => setIsImportModalOpen(false)}
+            nodes={meshNodes}
+            clients={meshClients}
+            existingPeers={draftPeers}
+            onImport={handleImportPeers}
+          />
         )}
       </div>
     </div>

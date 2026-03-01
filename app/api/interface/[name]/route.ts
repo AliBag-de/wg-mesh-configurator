@@ -24,7 +24,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     return apiError(500, {
       code: "INTERNAL_ERROR",
       message: error instanceof Error ? error.message : "Failed to read interface"
-    });
+    }, error);
   }
 }
 

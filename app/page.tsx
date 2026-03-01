@@ -48,6 +48,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { calculateClientIp, calculateNodeIp } from "@/lib/ip-utils";
 
 function toBase64(arr: Uint8Array) {
   return btoa(String.fromCharCode(...arr));
@@ -133,7 +134,8 @@ export default function HomePage() {
         id: crypto.randomUUID(),
         name: `Node-${prev.length + 1}`,
         endpoint: "",
-        listenPort: 51820 + prev.length,
+        listenPort: 51820,
+        wgIp: calculateNodeIp(networkCidr, prev.length),
         publicKey: "",
         privateKey: "",
       },
@@ -169,6 +171,7 @@ export default function HomePage() {
       {
         id: crypto.randomUUID(),
         name: `Client-${prev.length + 1}`,
+        wgIp: calculateClientIp(networkCidr, prev.length),
         publicKey: "",
         privateKey: "",
       },

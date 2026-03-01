@@ -221,7 +221,13 @@ export function ClientTable({
                                                 <Input
                                                     value={client.wgIp ?? ""}
                                                     onChange={(e) => updateClient(client.id, { wgIp: e.target.value })}
-                                                    placeholder={`10.20.0.${index + 101}`}
+                                                    placeholder={(() => {
+                                                        try {
+                                                            return calculateClientIp(networkCidr, index);
+                                                        } catch {
+                                                            return "10.20.0.x";
+                                                        }
+                                                    })()}
                                                     className="h-8 text-xs font-mono px-2.5 bg-black/20 border-border/40 focus:border-blue-500/50 focus:bg-background/80 transition-all"
                                                 />
                                             </td>

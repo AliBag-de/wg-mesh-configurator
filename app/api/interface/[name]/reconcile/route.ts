@@ -43,14 +43,14 @@ export async function POST(request: NextRequest, { params }: Params) {
         code: "REVISION_CONFLICT",
         message: error instanceof Error ? error.message : "Revision mismatch",
         details
-      });
+      }, error);
     }
 
     return apiError(500, {
       code: "APPLY_FAILED",
       message: error instanceof Error ? error.message : "Failed to reconcile interface",
       details
-    });
+    }, error);
   }
 }
 
