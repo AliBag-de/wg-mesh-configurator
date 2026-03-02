@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { ClientInput, EndpointVersion, NodeInput } from "./types";
+import { ClientInput, EndpointVersion, NodeInput, TopologyType } from "./types";
 import { Peer } from "./provisioning/contracts";
 
 type MeshState = {
@@ -11,6 +11,7 @@ type MeshState = {
   includeIpForwarding: boolean;
   enableBabel: boolean;
   autoGenerateKeys: boolean;
+  topology: TopologyType;
   nodes: NodeInput[];
   clients: ClientInput[];
   gatewayNodeNames: string[];
@@ -29,6 +30,7 @@ type MeshState = {
   setIncludeIpForwarding: (value: boolean) => void;
   setEnableBabel: (value: boolean) => void;
   setAutoGenerateKeys: (value: boolean) => void;
+  setTopology: (value: TopologyType) => void;
   setNodes: (value: NodeInput[] | ((prev: NodeInput[]) => NodeInput[])) => void;
   setClients: (
     value: ClientInput[] | ((prev: ClientInput[]) => ClientInput[])
@@ -78,6 +80,7 @@ const defaultState = () => ({
   includeIpForwarding: true,
   enableBabel: true,
   autoGenerateKeys: true,
+  topology: "full_mesh" as TopologyType,
   nodes: [],
   clients: [],
   gatewayNodeNames: [],
@@ -102,6 +105,7 @@ export const useMeshStore = create<MeshState>()(
       setIncludeIpForwarding: (value) => set({ includeIpForwarding: value }),
       setEnableBabel: (value) => set({ enableBabel: value }),
       setAutoGenerateKeys: (value) => set({ autoGenerateKeys: value }),
+      setTopology: (value) => set({ topology: value }),
       setNodes: (value) =>
         set((state) => ({
           nodes: typeof value === "function" ? value(state.nodes) : value
@@ -150,6 +154,7 @@ export const useMeshStore = create<MeshState>()(
         includeIpForwarding: state.includeIpForwarding,
         enableBabel: state.enableBabel,
         autoGenerateKeys: state.autoGenerateKeys,
+        topology: state.topology,
         nodes: state.nodes,
         clients: state.clients,
         gatewayNodeNames: state.gatewayNodeNames,

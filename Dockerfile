@@ -1,7 +1,6 @@
 FROM node:18-alpine
-
-# Install wireguard-tools for 'wg' command
-RUN apk add --no-cache wireguard-tools
+# Install wireguard-tools for 'wg' command and openssh-client for remote deployments
+RUN apt-get update && apt-get install -y --no-install-recommends wireguard-tools openssh-client && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

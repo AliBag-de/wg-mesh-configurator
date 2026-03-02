@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { NodeInput, ClientInput } from "@/lib/types";
+import { NodeInput, ClientInput, TopologyType } from "@/lib/types";
 import { neighborIndexes } from "@/lib/generate";
 import { colorForKey } from "@/lib/color";
 import { motion } from "framer-motion";
@@ -12,9 +12,10 @@ interface TopologyViewProps {
     nodes: NodeInput[];
     clients: ClientInput[];
     gatewayNodeNames: string[];
+    topology: TopologyType;
 }
 
-export function TopologyView({ nodes, clients, gatewayNodeNames }: TopologyViewProps) {
+export function TopologyView({ nodes, clients, gatewayNodeNames, topology }: TopologyViewProps) {
     const [hoveredNode, setHoveredNode] = useState<string | null>(null);
 
     const centerX = 400;
@@ -41,7 +42,7 @@ export function TopologyView({ nodes, clients, gatewayNodeNames }: TopologyViewP
         const links: Array<{ a: number; b: number }> = [];
         const seen = new Set<string>();
         nodes.forEach((_, i) => {
-            neighborIndexes(i, nodes.length).forEach((j) => {
+            neighborIndexes(i, nodes.length, topology).forEach((j) => {
                 const a = Math.min(i, j);
                 const b = Math.max(i, j);
                 const key = `${a}-${b}`;

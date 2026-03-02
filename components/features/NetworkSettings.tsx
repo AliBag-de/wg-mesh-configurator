@@ -3,7 +3,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { EndpointVersion } from "@/lib/types";
+import { EndpointVersion, TopologyType } from "@/lib/types";
 import { Settings2 } from "lucide-react";
 
 interface NetworkSettingsProps {
@@ -23,6 +23,8 @@ interface NetworkSettingsProps {
     setAutoGenerateKeys: (val: boolean) => void;
     mtu: number;
     setMtu: (val: number) => void;
+    topology: TopologyType;
+    setTopology: (val: TopologyType) => void;
 }
 
 export function NetworkSettings({
@@ -42,6 +44,8 @@ export function NetworkSettings({
     setAutoGenerateKeys,
     mtu,
     setMtu,
+    topology,
+    setTopology,
 }: NetworkSettingsProps) {
     return (
         <Card className="border-border/50 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-2xl relative overflow-hidden group">
@@ -146,6 +150,17 @@ export function NetworkSettings({
                         <Label htmlFor="auto-keys" className="text-xs font-medium cursor-pointer">
                             Auto Key Gen
                         </Label>
+                    </div>
+                    <div className="space-y-1">
+                        <Select
+                            id="topology"
+                            className="h-8 text-xs"
+                            value={topology}
+                            onChange={(e) => setTopology(e.target.value as TopologyType)}
+                        >
+                            <option value="full_mesh">Full Mesh (Recommended)</option>
+                            <option value="partial_mesh">Partial Mesh (Ring)</option>
+                        </Select>
                     </div>
                 </div>
             </CardContent>

@@ -73,6 +73,8 @@ export default function HomePage() {
     setIncludeIpForwarding,
     setEnableBabel,
     setAutoGenerateKeys,
+    topology,
+    setTopology,
     setNodes,
     setClients,
     setGatewayNodeNames,
@@ -235,6 +237,7 @@ export default function HomePage() {
         includeIpForwarding,
         enableBabel,
         autoGenerateKeys,
+        topology,
         nodes,
         clients,
         gatewayNodeNames, mtu,
@@ -299,6 +302,7 @@ export default function HomePage() {
         includeIpForwarding,
         enableBabel,
         autoGenerateKeys,
+        topology,
         nodes,
         clients,
         gatewayNodeNames, mtu,
@@ -342,6 +346,7 @@ export default function HomePage() {
         includeIpForwarding,
         enableBabel,
         autoGenerateKeys,
+        topology,
         nodes,
         clients,
         gatewayNodeNames, mtu,
@@ -433,10 +438,70 @@ export default function HomePage() {
     });
     setBatchNodeStatuses(newStatuses);
 
-    let completed = Object.values(newStatuses).filter(s => s === "success").length;
+    // --- STAGE 0: SYNC MISSING KEYS BEFORE DEPLOYING ---
+    // The generator backend `resolveMeshState` assigns keys if they are missing...
+    // BUT since we send N distinct isolated fetch POSTs concurrently here, 
+    // each fetch call randomly generates DIFFERENT keys for the identical peers!
+    // Result: The nodes can never establish handshake.
+    // Solution: Pre-generate missing keys in our global state BEFORE snapshotting the payload.
+
+    let hasMissingKeys = false;
+    nodes.forEach(n => {
+      if (!n.privateKey) {
+        generateNodeKeys(n.id);
+        hasMissingKeys = true;
+      }
+    });
+
+    clients.forEach(c => {
+      if (!c.privateKey) {
+        generateClientKeys(c.id);
+        hasMissingKeys = true;
+      }
+    });
+
+    if (hasMissingKeys) {
+      // If we regenerated keys, we need to artificially wait ~100ms so 
+      // React state flushes and we capture the updated `nodes` via a timeout 
+      // or we must pass the manually mutated arrays to the payload.
+      // Easiest is to manually map them to avoid React stale-state race conditions:
+      const updatedNodes = nodes.map(n => {
+        if (n.privateKey) return n;
+        const priv = x25519.utils.randomPrivateKey();
+        return { ...n, privateKey: toBase64(priv), publicKey: toBase64(x25519.getPublicKey(priv)) };
+      });
+      const updatedClients = clients.map(c => {
+        if (c.privateKey) return c;
+        const priv = x25519.utils.randomPrivateKey();
+        return { ...c, privateKey: toBase64(priv), publicKey: toBase64(x25519.getPublicKey(priv)) };
+      });
+
+      updatedNodes.forEach(n => {
+        if (!nodes.find(o => o.id === n.id)?.privateKey) {
+          updateNode(n.id, { privateKey: n.privateKey, publicKey: n.publicKey });
+        }
+      });
+      updatedClients.forEach(c => {
+        if (!clients.find(o => o.id === c.id)?.privateKey) {
+          updateClient(c.id, { privateKey: c.privateKey, publicKey: c.publicKey });
+        }
+      });
+
+      // Use the explicitly updated array snapshot for the deployment loop
+      setTimeout(() => __executeLoop(updatedNodes, updatedClients), 100);
+      return;
+    }
+
+    __executeLoop(nodes, clients);
+  };
+
+  const __executeLoop = async (currentNodes: typeof nodes, currentClients: typeof clients) => {
+    const eligibleNodes = currentNodes.filter(n => n.sshUser && n.sshPort && (n.sshHost || n.endpoint));
+
+    let completed = Object.values(batchNodeStatuses).filter(s => s === "success").length;
 
     for (const node of eligibleNodes) {
-      if (newStatuses[node.id] === "success") continue;
+      if (batchNodeStatuses[node.id] === "success") continue;
 
       setBatchNodeStatuses(prev => ({ ...prev, [node.id]: "deploying" }));
       setBatchLogs(prev => prev + `\n>>> [${new Date().toLocaleTimeString()}] Starting: ${node.name}...\n`);
@@ -450,8 +515,9 @@ export default function HomePage() {
           includeIpForwarding,
           enableBabel,
           autoGenerateKeys,
-          nodes,
-          clients,
+          topology,
+          nodes: currentNodes,
+          clients: currentClients,
           gatewayNodeNames,
           mtu,
         };
@@ -462,6 +528,7 @@ export default function HomePage() {
           body: JSON.stringify({
             payload,
             nodeName: node.name,
+            action: deployAction,
             sshKeyContent: Object.values(sshKeys)[0] // Simple: use the first uploaded key for now
           }),
         });
@@ -614,6 +681,8 @@ export default function HomePage() {
                 setEnableBabel={setEnableBabel}
                 autoGenerateKeys={autoGenerateKeys}
                 setAutoGenerateKeys={setAutoGenerateKeys}
+                topology={topology}
+                setTopology={setTopology}
                 mtu={mtu}
                 setMtu={setMtu}
               />
@@ -651,7 +720,7 @@ export default function HomePage() {
           </TabsContent>
 
           <TabsContent value="topology" className="flex-1 min-h-0 border rounded-xl overflow-hidden bg-black/20 backdrop-blur-md shadow-xl border-border/40 focus-visible:outline-none">
-            <TopologyView nodes={nodes} clients={clients} gatewayNodeNames={gatewayNodeNames} />
+            <TopologyView nodes={nodes} clients={clients} gatewayNodeNames={gatewayNodeNames} topology={topology} />
           </TabsContent>
         </Tabs>
       </div>
@@ -934,6 +1003,8 @@ export default function HomePage() {
         nodeStatuses={batchNodeStatuses}
         logs={batchLogs}
         onStart={executeBatchRemoteDeploy}
+        deployAction={deployAction}
+        setDeployAction={setDeployAction}
       />
     </DashboardLayout>
   );

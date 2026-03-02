@@ -1,4 +1,5 @@
 export type EndpointVersion = "ipv4" | "ipv6";
+export type TopologyType = "full_mesh" | "partial_mesh";
 
 export type NodeInput = {
   id: string;
@@ -31,6 +32,7 @@ export type GeneratePayload = {
   includeIpForwarding: boolean;
   enableBabel: boolean;
   autoGenerateKeys: boolean;
+  topology: TopologyType;
   nodes: NodeInput[];
   clients: ClientInput[];
   gatewayNodeNames: string[];

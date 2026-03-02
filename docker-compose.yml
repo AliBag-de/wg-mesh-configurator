@@ -1,11 +1,13 @@
 services:
   wg-manager:
-    build: .
+    build:
+      context: .
+      # network: host
     container_name: wg-manager
     restart: unless-stopped
     ports:
       - "3000:3000"
-    # network_mode: host (Only use on Linux if host interface access is needed)
+    # network_mode: host
     cap_add:
       - NET_ADMIN
     environment:
@@ -14,8 +16,9 @@ services:
       - PORT=3000
     volumes:
       - ./data:/app/data
-      # Optional: Persist local storage if needed, though app is mostly stateless/browser-based
-      # except for the read-only view of wg interfaces.
-      # If you want to allow the app to READ config files (optional future feature):
-      - /etc/wireguard:/etc/wireguard:ro
+      - /etc/wireguard:/etc/wireguard
       - ./public:/app/public
+networks:
+  appnet:
+    driver: bridge
+    enable_ipv6: true

@@ -10,8 +10,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle2, Circle, Loader2, XCircle, Terminal, Server, Globe, Zap, RefreshCw, ShieldAlert } from "lucide-react";
+import { CheckCircle2, Circle, Loader2, XCircle, Terminal, Server, Globe, Zap, RefreshCw, ShieldAlert, Settings, DownloadCloud } from "lucide-react";
 import { NodeInput } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +27,8 @@ interface BatchDeployModalProps {
     nodeStatuses: Record<string, DeployStatus>;
     logs: string;
     onStart: () => void;
+    deployAction: "deploy_and_execute" | "deploy" | "execute";
+    setDeployAction: (val: "deploy_and_execute" | "deploy" | "execute") => void;
 }
 
 export function BatchDeployModal({
@@ -37,6 +40,8 @@ export function BatchDeployModal({
     nodeStatuses,
     logs,
     onStart,
+    deployAction,
+    setDeployAction,
 }: BatchDeployModalProps) {
     // Filter nodes that have SSH configured
     const eligibleNodes = nodes.filter(n => n.sshUser && n.sshPort && (n.sshHost || n.endpoint));
@@ -130,6 +135,62 @@ export function BatchDeployModal({
                                     })}
                                 </div>
                             </ScrollArea>
+
+                            {/* Deployment Action Selector */}
+                            <div className="space-y-3 pt-4 border-t border-border/40 mb-2">
+                                <Label className="text-[10px] text-muted-foreground uppercase flex items-center gap-1.5 ml-1 font-semibold">
+                                    <Settings className="h-3 w-3 text-primary/70" /> Deployment Action
+                                </Label>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <button
+                                        onClick={() => setDeployAction("deploy_and_execute")}
+                                        disabled={isDeploying || processedCount > 0}
+                                        className={cn(
+                                            "flex flex-col items-center justify-center p-3 rounded-xl border transition-all gap-1",
+                                            deployAction === "deploy_and_execute"
+                                                ? "bg-primary/20 border-primary text-primary shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                                                : "bg-black/20 border-border/40 text-muted-foreground hover:border-primary/40 hover:bg-primary/5",
+                                            (isDeploying || processedCount > 0) && "opacity-50 cursor-not-allowed"
+                                        )}
+                                    >
+                                        <Zap className="h-4 w-4" />
+                                        <span className="text-[10px] font-bold uppercase">Full Setup</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setDeployAction("deploy")}
+                                        disabled={isDeploying || processedCount > 0}
+                                        className={cn(
+                                            "flex flex-col items-center justify-center p-3 rounded-xl border transition-all gap-1",
+                                            deployAction === "deploy"
+                                                ? "bg-blue-500/20 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]"
+                                                : "bg-black/20 border-border/40 text-muted-foreground hover:border-blue-500/40 hover:bg-blue-500/5",
+                                            (isDeploying || processedCount > 0) && "opacity-50 cursor-not-allowed"
+                                        )}
+                                    >
+                                        <DownloadCloud className="h-4 w-4" />
+                                        <span className="text-[10px] font-bold uppercase">Upload Only</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setDeployAction("execute")}
+                                        disabled={isDeploying || processedCount > 0}
+                                        className={cn(
+                                            "flex flex-col items-center justify-center p-3 rounded-xl border transition-all gap-1",
+                                            deployAction === "execute"
+                                                ? "bg-amber-500/20 border-amber-500 text-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.2)]"
+                                                : "bg-black/20 border-border/40 text-muted-foreground hover:border-amber-500/40 hover:bg-amber-500/5",
+                                            (isDeploying || processedCount > 0) && "opacity-50 cursor-not-allowed"
+                                        )}
+                                    >
+                                        <Terminal className="h-4 w-4" />
+                                        <span className="text-[10px] font-bold uppercase">Execute Setup</span>
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground italic px-1 pt-1 opacity-70">
+                                    {deployAction === "deploy_and_execute" && "Upload configuration files and immediately initiate the WireGuard setup script."}
+                                    {deployAction === "deploy" && "Only transfer configuration files to the remote server's temporary directory."}
+                                    {deployAction === "execute" && "Initiate the setup script and verification process for already uploaded files."}
+                                </p>
+                            </div>
                         </div>
 
                         {/* Logs Area */}
@@ -183,6 +244,6 @@ export function BatchDeployModal({
                     )}
                 </DialogFooter>
             </DialogContent>
-        </Dialog>
+        </Dialog >
     );
 }

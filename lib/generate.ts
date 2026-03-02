@@ -17,8 +17,16 @@ function safeName(name: string) {
   return name.trim().replace(/[^a-zA-Z0-9_-]+/g, "_");
 }
 
-export function neighborIndexes(index: number, count: number): number[] {
+export function neighborIndexes(index: number, count: number, topology: "full_mesh" | "partial_mesh"): number[] {
   if (count <= 1) return [];
+  if (topology === "full_mesh") {
+    const arr = [];
+    for (let i = 0; i < count; i++) {
+      if (i !== index) arr.push(i);
+    }
+    return arr;
+  }
+
   if (count === 2) return [index === 0 ? 1 : 0];
   if (count === 3) return [0, 1, 2].filter((i) => i !== index);
 
@@ -158,6 +166,7 @@ export function generateNodeConfig(
     persistentKeepalive: number;
     includeIpForwarding: boolean;
     gatewayNodeNames: string[];
+    topology: "full_mesh" | "partial_mesh";
     mtu?: number;
     enableBabel?: boolean;
   },
@@ -168,7 +177,7 @@ export function generateNodeConfig(
 
   const node = resolvedNodes[nodeIndex];
   const nodeIp = nodeIps[nodeIndex];
-  const neighbors = neighborIndexes(nodeIndex, resolvedNodes.length);
+  const neighbors = neighborIndexes(nodeIndex, resolvedNodes.length, config.topology);
 
   const lines: string[] = [
     `# ${nodeName}`,
@@ -417,7 +426,7 @@ export async function generateZip(payload: GeneratePayload) {
 
   resolvedNodes.forEach((node, i) => {
     const nodeIp = nodeIps[i];
-    const neighbors = neighborIndexes(i, resolvedNodes.length);
+    const neighbors = neighborIndexes(i, resolvedNodes.length, p.topology || "full_mesh");
     const nodeConfig = generateNodeConfig(
       node.name,
       resolvedNodes,
@@ -429,6 +438,7 @@ export async function generateZip(payload: GeneratePayload) {
         persistentKeepalive,
         includeIpForwarding,
         gatewayNodeNames,
+        topology: p.topology || "full_mesh",
         mtu: p.mtu,
         enableBabel: enableBabel
       },
@@ -553,6 +563,7 @@ export function generateNodeAssets(
       persistentKeepalive,
       includeIpForwarding,
       gatewayNodeNames,
+      topology: p.topology || "full_mesh",
       mtu: p.mtu,
       enableBabel: enableBabel
     },

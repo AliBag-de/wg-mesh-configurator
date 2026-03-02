@@ -10,6 +10,7 @@ import { x25519 } from "@noble/curves/ed25519";
 import { GeneratePayload } from "@/lib/types";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
+import { cn } from "@/lib/utils";
 import {
     Dialog,
     DialogContent,
@@ -33,7 +34,8 @@ import {
     Settings,
     CheckCircle2,
     ShieldCheck,
-    AlertCircle
+    AlertCircle,
+    DownloadCloud
 } from "lucide-react";
 
 function toBase64(arr: Uint8Array) {
@@ -52,6 +54,7 @@ export default function ProvisioningPage() {
         enableBabel,
         autoGenerateKeys,
         gatewayNodeNames,
+        topology,
         mtu,
         setNodes,
         setClients,
@@ -148,6 +151,7 @@ export default function ProvisioningPage() {
                 includeIpForwarding,
                 enableBabel,
                 autoGenerateKeys,
+                topology,
                 nodes,
                 clients,
                 gatewayNodeNames,
@@ -198,6 +202,7 @@ export default function ProvisioningPage() {
                 includeIpForwarding,
                 enableBabel,
                 autoGenerateKeys,
+                topology,
                 nodes,
                 clients,
                 gatewayNodeNames,
@@ -273,17 +278,65 @@ export default function ProvisioningPage() {
                 newStatuses[n.id] = "pending";
             }
         });
-        setBatchNodeStatuses(newStatuses);
+        // --- STAGE 0: SYNC MISSING KEYS BEFORE DEPLOYING ---
+        let hasMissingKeys = false;
+        nodes.forEach(n => {
+            if (!n.privateKey) {
+                generateNodeKeys(n.id);
+                hasMissingKeys = true;
+            }
+        });
+
+        clients.forEach(c => {
+            if (!c.privateKey) {
+                generateClientKeys(c.id);
+                hasMissingKeys = true;
+            }
+        });
+
+        if (hasMissingKeys) {
+            const updatedNodes = nodes.map(n => {
+                if (n.privateKey) return n;
+                const priv = x25519.utils.randomPrivateKey();
+                return { ...n, privateKey: toBase64(priv), publicKey: toBase64(x25519.getPublicKey(priv)) };
+            });
+            const updatedClients = clients.map(c => {
+                if (c.privateKey) return c;
+                const priv = x25519.utils.randomPrivateKey();
+                return { ...c, privateKey: toBase64(priv), publicKey: toBase64(x25519.getPublicKey(priv)) };
+            });
+
+            updatedNodes.forEach(n => {
+                if (!nodes.find(o => o.id === n.id)?.privateKey) {
+                    updateNode(n.id, { privateKey: n.privateKey, publicKey: n.publicKey });
+                }
+            });
+            updatedClients.forEach(c => {
+                if (!clients.find(o => o.id === c.id)?.privateKey) {
+                    updateClient(c.id, { privateKey: c.privateKey, publicKey: c.publicKey });
+                }
+            });
+
+            setTimeout(() => __executeLoop(updatedNodes, updatedClients), 100);
+            return;
+        }
+
+        __executeLoop(nodes, clients);
+    };
+
+    const __executeLoop = async (currentNodes: typeof nodes, currentClients: typeof clients) => {
+        const eligibleNodes = currentNodes.filter(n => n.sshUser && n.sshPort && (n.sshHost || n.endpoint));
+        let completed = Object.values(batchNodeStatuses).filter(s => s === "success").length;
 
         for (const node of eligibleNodes) {
-            if (newStatuses[node.id] === "success") continue;
+            if (batchNodeStatuses[node.id] === "success") continue;
             setBatchNodeStatuses(prev => ({ ...prev, [node.id]: "deploying" }));
             setBatchLogs(prev => prev + `\n>>> [${new Date().toLocaleTimeString()}] Starting: ${node.name}...\n`);
 
             try {
                 const payload: GeneratePayload = {
                     networkCidr, interfaceName, endpointVersion, persistentKeepalive,
-                    includeIpForwarding, enableBabel, autoGenerateKeys, nodes, clients, gatewayNodeNames, mtu
+                    includeIpForwarding, enableBabel, autoGenerateKeys, topology, nodes: currentNodes, clients: currentClients, gatewayNodeNames, mtu
                 };
 
                 const res = await fetch("/api/deploy/remote", {
@@ -292,6 +345,7 @@ export default function ProvisioningPage() {
                     body: JSON.stringify({
                         payload,
                         nodeName: node.name,
+                        action: deployAction,
                         sshKeyContent: Object.values(sshKeys)[0]
                     }),
                 });
@@ -332,8 +386,8 @@ export default function ProvisioningPage() {
                 setBatchNodeStatuses(prev => ({ ...prev, [node.id]: "error" }));
                 setBatchLogs(prev => prev + `\nERROR: ${node.name} - ${err.message}\n`);
             }
-            const currentTotal = Object.values(newStatuses).length;
-            const currentDone = Object.values(newStatuses).filter(s => s === "success" || s === "error").length;
+            const currentTotal = Object.values(batchNodeStatuses).length;
+            const currentDone = Object.values(batchNodeStatuses).filter(s => s === "success" || s === "error").length;
             setBatchProgress(Math.round((currentDone / currentTotal) * 100));
         }
         setIsBatchDeploying(false);
@@ -472,15 +526,49 @@ export default function ProvisioningPage() {
                                     <Label className="text-[10px] text-muted-foreground uppercase flex items-center gap-1.5 ml-1 font-semibold">
                                         <Settings className="h-3 w-3 text-primary/70" /> Deployment Action
                                     </Label>
-                                    <select
-                                        className="w-full h-11 px-4 rounded-lg border border-border/50 bg-secondary/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all font-medium text-foreground hover:bg-secondary/70 appearance-none"
-                                        value={deployAction}
-                                        onChange={(e: any) => setDeployAction(e.target.value)}
-                                    >
-                                        <option value="deploy_and_execute" className="bg-background">Full Setup (Upload & Install)</option>
-                                        <option value="deploy" className="bg-background">Upload Only (Config Sync)</option>
-                                        <option value="execute" className="bg-background">Execute Setup (Post-Upload)</option>
-                                    </select>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <button
+                                            onClick={() => setDeployAction("deploy_and_execute")}
+                                            className={cn(
+                                                "flex flex-col items-center justify-center p-3 rounded-xl border transition-all gap-1",
+                                                deployAction === "deploy_and_execute"
+                                                    ? "bg-primary/20 border-primary text-primary shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                                                    : "bg-black/20 border-border/40 text-muted-foreground hover:border-primary/40 hover:bg-primary/5"
+                                            )}
+                                        >
+                                            <Zap className="h-4 w-4" />
+                                            <span className="text-[10px] font-bold uppercase">Full Setup</span>
+                                        </button>
+                                        <button
+                                            onClick={() => setDeployAction("deploy")}
+                                            className={cn(
+                                                "flex flex-col items-center justify-center p-3 rounded-xl border transition-all gap-1",
+                                                deployAction === "deploy"
+                                                    ? "bg-blue-500/20 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]"
+                                                    : "bg-black/20 border-border/40 text-muted-foreground hover:border-blue-500/40 hover:bg-blue-500/5"
+                                            )}
+                                        >
+                                            <DownloadCloud className="h-4 w-4" />
+                                            <span className="text-[10px] font-bold uppercase">Upload Only</span>
+                                        </button>
+                                        <button
+                                            onClick={() => setDeployAction("execute")}
+                                            className={cn(
+                                                "flex flex-col items-center justify-center p-3 rounded-xl border transition-all gap-1",
+                                                deployAction === "execute"
+                                                    ? "bg-amber-500/20 border-amber-500 text-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.2)]"
+                                                    : "bg-black/20 border-border/40 text-muted-foreground hover:border-amber-500/40 hover:bg-amber-500/5"
+                                            )}
+                                        >
+                                            <Terminal className="h-4 w-4" />
+                                            <span className="text-[10px] font-bold uppercase">Execute Setup</span>
+                                        </button>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground italic px-1 pt-1 opacity-70">
+                                        {deployAction === "deploy_and_execute" && "Upload configuration files and immediately initiate the WireGuard setup script."}
+                                        {deployAction === "deploy" && "Only transfer configuration files to the remote server's temporary directory."}
+                                        {deployAction === "execute" && "Initiate the setup script and verification process for already uploaded files."}
+                                    </p>
                                 </div>
                             )}
                         </div>
@@ -547,6 +635,8 @@ export default function ProvisioningPage() {
                 isDeploying={isBatchDeploying}
                 onStart={executeBatchRemoteDeploy}
                 logs={batchLogs}
+                deployAction={deployAction}
+                setDeployAction={setDeployAction}
             />
         </DashboardLayout>
     );
