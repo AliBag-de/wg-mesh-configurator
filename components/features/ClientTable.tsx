@@ -25,6 +25,8 @@ interface ClientTableProps {
     generateClientKeys: (id: string) => void;
     reorderClients: (newClients: ClientInput[]) => void;
     autoGenerateKeys: boolean;
+    nodes: any[];
+    globalGatewayNodeNames: string[];
 }
 
 type SortKey = "name" | "wgIp" | "manual";
@@ -38,6 +40,8 @@ export function ClientTable({
     generateClientKeys,
     reorderClients,
     autoGenerateKeys,
+    nodes,
+    globalGatewayNodeNames,
 }: ClientTableProps) {
     const [sortKey, setSortKey] = useState<SortKey>("manual");
     const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -69,7 +73,7 @@ export function ClientTable({
         return sortDir === "asc" ? <ArrowUp className="h-3 w-3 text-blue-400" /> : <ArrowDown className="h-3 w-3 text-blue-400" />;
     };
     const [qrClient, setQrClient] = useState<{ name: string; config: string } | null>(null);
-    const { nodes, networkCidr, endpointVersion, persistentKeepalive, gatewayNodeNames, mtu } = useMeshStore();
+    const { networkCidr, endpointVersion, persistentKeepalive, gatewayNodeNames, mtu } = useMeshStore();
 
     const handleShowQR = (client: ClientInput) => {
         try {
@@ -162,6 +166,7 @@ export function ClientTable({
                                         WG IP <SortIcon k="wgIp" />
                                     </div>
                                 </th>
+                                <th className="px-3 py-2 w-48">Routes & Gateways</th>
                                 {!autoGenerateKeys && <th className="px-3 py-2">Keys (Private / Public)</th>}
                                 <th className="px-3 py-2 w-[100px] text-right">Actions</th>
                             </tr>
@@ -230,6 +235,38 @@ export function ClientTable({
                                                     })()}
                                                     className="h-8 text-xs font-mono px-2.5 bg-black/20 border-border/40 focus:border-blue-500/50 focus:bg-background/80 transition-all"
                                                 />
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <div className="flex flex-col gap-1.5 opacity-80 hover:opacity-100 transition-opacity focus-within:opacity-100">
+                                                    <Input
+                                                        value={client.subnetRoutes || ""}
+                                                        onChange={(e) => updateClient(client.id, { subnetRoutes: e.target.value })}
+                                                        placeholder="Custom Subnets (LAN)"
+                                                        className="h-7 w-full text-[10px] px-2 bg-black/40 border-border/20 focus:border-blue-500/40 focus:bg-black/80 font-mono"
+                                                    />
+                                                    <div className="relative">
+                                                        <select
+                                                            multiple
+                                                            value={client.gateways || []}
+                                                            onChange={(e) => {
+                                                                const values = Array.from(e.target.selectedOptions, option => option.value);
+                                                                updateClient(client.id, { gateways: values });
+                                                            }}
+                                                            className="h-10 text-[10px] w-full rounded-md border border-border/20 bg-black/40 px-2 py-1 text-muted-foreground focus:outline-none focus:border-blue-500/40 custom-scrollbar"
+                                                        >
+                                                            {nodes.length > 0 ? nodes.map((n) => (
+                                                                <option key={`cc-gw-${client.id}-${n.name}`} value={n.name}>
+                                                                    {n.name}
+                                                                </option>
+                                                            )) : <option disabled>No Nodes</option>}
+                                                        </select>
+                                                        {(!client.gateways || client.gateways.length === 0) && (
+                                                            <div className="absolute right-1 top-1 flex items-center gap-1 opacity-50 pointer-events-none">
+                                                                <Badge className="h-4 text-[8px] px-1 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20">Global Setting</Badge>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </td>
                                             {!autoGenerateKeys && (
                                                 <td className="px-3 py-2">

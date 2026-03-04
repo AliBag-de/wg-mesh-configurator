@@ -12,19 +12,22 @@ export function ConfigManager() {
 
     const handleExport = () => {
         try {
+            store.ensureKeys();
+            // We need to fetch the latest state since the store might have been updated by ensureKeys
+            const currentState = useMeshStore.getState();
             const state = {
-                networkCidr: store.networkCidr,
-                endpointVersion: store.endpointVersion,
-                interfaceName: store.interfaceName,
-                persistentKeepalive: store.persistentKeepalive,
-                includeIpForwarding: store.includeIpForwarding,
-                enableBabel: store.enableBabel,
-                autoGenerateKeys: store.autoGenerateKeys,
-                nodes: store.nodes,
-                clients: store.clients,
-                gatewayNodeNames: store.gatewayNodeNames,
-                gatewayTouched: store.gatewayTouched,
-                mtu: store.mtu,
+                networkCidr: currentState.networkCidr,
+                endpointVersion: currentState.endpointVersion,
+                interfaceName: currentState.interfaceName,
+                persistentKeepalive: currentState.persistentKeepalive,
+                includeIpForwarding: currentState.includeIpForwarding,
+                enableBabel: currentState.enableBabel,
+                autoGenerateKeys: currentState.autoGenerateKeys,
+                nodes: currentState.nodes,
+                clients: currentState.clients,
+                gatewayNodeNames: currentState.gatewayNodeNames,
+                gatewayTouched: currentState.gatewayTouched,
+                mtu: currentState.mtu,
                 version: "1.0",
                 timestamp: new Date().toISOString(),
             };

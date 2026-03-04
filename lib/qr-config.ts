@@ -29,6 +29,14 @@ export function generateClientConfig(
         lines.push(`MTU = ${mtu}`);
     }
 
+    let allowedIps = networkCidr;
+    if (client.subnetRoutes) {
+        const subnets = client.subnetRoutes.split(',').map(s => s.trim()).filter(Boolean);
+        if (subnets.length > 0) {
+            allowedIps += `, ${subnets.join(', ')}`;
+        }
+    }
+
     gatewayNodes.forEach(gateway => {
         const psk = presharedKeys[gateway.name];
         lines.push(
@@ -37,7 +45,7 @@ export function generateClientConfig(
             "[Peer]",
             `PublicKey = ${gateway.publicKey}`,
             `PresharedKey = ${psk}`,
-            `AllowedIPs = ${networkCidr}`,
+            `AllowedIPs = ${allowedIps}`,
             `Endpoint = ${formatEndpoint(gateway.endpoint, endpointVersion, gateway.listenPort)}`,
             `PersistentKeepalive = ${persistentKeepalive}`
         );

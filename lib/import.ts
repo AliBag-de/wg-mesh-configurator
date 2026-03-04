@@ -210,13 +210,26 @@ export function convertConfigToMesh(
         } else {
             // It's a Client
             if (!isClientDuplicate(peer.publicKey)) {
+                let wgIp = "";
+                let subnetRoutes = "";
+
+                if (peer.allowedIPs) {
+                    const ips = peer.allowedIPs.split(",").map(ip => ip.trim()).filter(Boolean);
+                    wgIp = ips.length > 0 ? (ips[0].split("/")[0] || "") : "";
+                    if (ips.length > 1) {
+                        subnetRoutes = ips.slice(1).join(", ");
+                    }
+                }
+
                 newClients.push({
                     id: uuidv4(),
                     name: peer.name || `Imported Client ${newClients.length + i + 1}`,
                     publicKey: peer.publicKey,
                     presharedKey: peer.presharedKey || "",
                     privateKey: "",
-                    wgIp: peer.allowedIPs?.split(",")[0]?.split("/")[0]?.trim() || ""
+                    wgIp: wgIp,
+                    subnetRoutes: subnetRoutes,
+                    gateways: [] // For imports, we can't easily know gateway topology unless we parse a full mesh export
                 });
                 importedPublicKeys.add(peer.publicKey);
             }

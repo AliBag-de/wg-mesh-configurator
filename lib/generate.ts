@@ -1,8 +1,7 @@
 import JSZip from "jszip";
-import crypto from "crypto";
-import { x25519 } from "@noble/curves/ed25519";
 import { GeneratePayload } from "./types";
 import { deriveDeterministicPsk } from "./psk";
+import { generateKeypair, derivePublicKey } from "./wg-utils";
 
 type ParsedCidr = {
   base: number;
@@ -43,34 +42,6 @@ export function neighborIndexes(index: number, count: number, topology: "full_me
   return Array.from(neighbors);
 }
 
-function encodeBase64(bytes: Uint8Array) {
-  return Buffer.from(bytes).toString("base64");
-}
-
-function decodeBase64(value: string) {
-  try {
-    return new Uint8Array(Buffer.from(value, "base64"));
-  } catch {
-    return null;
-  }
-}
-
-function generateKeypair() {
-  const privateKeyBytes = crypto.randomBytes(32);
-  const publicKeyBytes = x25519.getPublicKey(privateKeyBytes);
-  return {
-    privateKey: encodeBase64(privateKeyBytes),
-    publicKey: encodeBase64(publicKeyBytes)
-  };
-}
-
-function derivePublicKey(privateKey: string) {
-  const bytes = decodeBase64(privateKey);
-  if (!bytes || bytes.length !== 32) {
-    throw new Error("Private key base64 gecersiz.");
-  }
-  return encodeBase64(x25519.getPublicKey(bytes));
-}
 
 function ensure(condition: boolean, message: string) {
   if (!condition) {
@@ -108,7 +79,13 @@ export function resolveMeshState(payload: GeneratePayload) {
 
   const nodeMap = new Map<string, typeof nodes[number]>();
   nodes.forEach((node) => nodeMap.set(node.name, node));
-  gatewayNodeNames.forEach((name) => {
+
+  // Auto-assign all nodes as gateways if none are explicitly selected
+  const effectiveGateways = gatewayNodeNames.length > 0
+    ? gatewayNodeNames
+    : nodes.map(n => n.name);
+
+  effectiveGateways.forEach((name) => {
     ensure(nodeMap.has(name), `Gateway node bulunamadi: ${name}`);
   });
 
@@ -120,11 +97,11 @@ export function resolveMeshState(payload: GeneratePayload) {
 
     // Fallback: If no keys are provided, generate them even if autoGenerateKeys is false
     // to prevent 'undefined' in config files.
-    if (!res.privateKey) {
+    if (!res.privateKey && !res.publicKey) {
       const keypair = generateKeypair();
       res.privateKey = keypair.privateKey;
       res.publicKey = keypair.publicKey;
-    } else if (!res.publicKey) {
+    } else if (res.privateKey && !res.publicKey) {
       res.publicKey = derivePublicKey(res.privateKey);
     }
 
@@ -134,15 +111,26 @@ export function resolveMeshState(payload: GeneratePayload) {
   const resolvedClients = clients.map((client, i) => {
     let res = { ...client, address: `${clientIps[i]}/32` };
 
-    if (!res.privateKey) {
+    if (!res.privateKey && !res.publicKey) {
       const keypair = generateKeypair();
       res.privateKey = keypair.privateKey;
       res.publicKey = keypair.publicKey;
-    } else if (!res.publicKey) {
+    } else if (res.privateKey && !res.publicKey) {
       res.publicKey = derivePublicKey(res.privateKey);
     }
 
-    return res;
+    // Determine effective gateways for THIS client
+    let activeGateways = effectiveGateways;
+    if (res.gateways && res.gateways.length > 0) {
+      activeGateways = res.gateways.filter((gw) => nodeMap.has(gw));
+    }
+
+    // Default to global if filtered result is completely empty but global wasn't
+    if (activeGateways.length === 0 && effectiveGateways.length > 0) {
+      activeGateways = effectiveGateways;
+    }
+
+    return { ...res, activeGateways };
   });
 
   return {
@@ -151,7 +139,10 @@ export function resolveMeshState(payload: GeneratePayload) {
     nodeIps,
     clientIps,
     parsed,
-    payload
+    payload: {
+      ...payload,
+      gatewayNodeNames: effectiveGateways
+    }
   };
 }
 
@@ -225,8 +216,8 @@ export function generateNodeConfig(
     );
   }
 
-  if (config.gatewayNodeNames.includes(node.name)) {
-    for (const client of resolvedClients) {
+  for (const client of resolvedClients) {
+    if (client.activeGateways.includes(node.name)) {
       const psk = pskGetter(client.name, node.name);
       lines.push(
         "",
@@ -474,19 +465,28 @@ export async function generateZip(payload: GeneratePayload) {
       clientLines.push(`MTU = ${p.mtu}`);
     }
 
-    for (const gatewayName of gatewayNodeNames) {
+    for (const gatewayName of client.activeGateways) {
       const gateway = resolvedNodeMap.get(gatewayName);
       if (!gateway) {
         throw new Error(`Gateway node bulunamadi: ${gatewayName}`);
       }
       const psk = getPsk(client.name, gateway.name);
+
+      let allowedIps = networkCidr;
+      if (client.subnetRoutes) {
+        const subnets = client.subnetRoutes.split(',').map((s: string) => s.trim()).filter(Boolean);
+        if (subnets.length > 0) {
+          allowedIps += `, ${subnets.join(', ')}`;
+        }
+      }
+
       clientLines.push(
         "",
         `# ${gateway.name}`,
         "[Peer]",
         `PublicKey = ${gateway.publicKey}`,
         `PresharedKey = ${psk}`,
-        `AllowedIPs = ${networkCidr}`,
+        `AllowedIPs = ${allowedIps}`,
         `Endpoint = ${formatEndpoint(
           gateway.endpoint,
           gateway.listenPort

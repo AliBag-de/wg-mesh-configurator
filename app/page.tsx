@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { x25519 } from "@noble/curves/ed25519";
+import { generateKeypair } from "@/lib/wg-utils";
 import { useMeshStore } from "../lib/store";
 import { NetworkSettings } from "@/components/features/NetworkSettings";
 import { GatewaySelection } from "@/components/features/GatewaySelection";
@@ -50,9 +50,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { calculateClientIp, calculateNodeIp } from "@/lib/ip-utils";
 
-function toBase64(arr: Uint8Array) {
-  return btoa(String.fromCharCode(...arr));
-}
+
 
 export default function HomePage() {
   const {
@@ -130,6 +128,8 @@ export default function HomePage() {
 
   // Actions
   const addNode = () => {
+    const keypair = generateKeypair();
+
     setNodes((prev) => [
       ...prev,
       {
@@ -138,8 +138,8 @@ export default function HomePage() {
         endpoint: "",
         listenPort: 51820,
         wgIp: calculateNodeIp(networkCidr, prev.length),
-        publicKey: "",
-        privateKey: "",
+        privateKey: keypair.privateKey,
+        publicKey: keypair.publicKey,
       },
     ]);
   };
@@ -159,23 +159,24 @@ export default function HomePage() {
   };
 
   const generateNodeKeys = (id: string) => {
-    const priv = x25519.utils.randomPrivateKey();
-    const pub = x25519.getPublicKey(priv);
+    const keypair = generateKeypair();
     updateNode(id, {
-      privateKey: toBase64(priv),
-      publicKey: toBase64(pub),
+      privateKey: keypair.privateKey,
+      publicKey: keypair.publicKey,
     });
   };
 
   const addClient = () => {
+    const keypair = generateKeypair();
+
     setClients((prev) => [
       ...prev,
       {
         id: crypto.randomUUID(),
         name: `Client-${prev.length + 1}`,
         wgIp: calculateClientIp(networkCidr, prev.length),
-        publicKey: "",
-        privateKey: "",
+        privateKey: keypair.privateKey,
+        publicKey: keypair.publicKey,
       },
     ]);
   };
@@ -191,11 +192,10 @@ export default function HomePage() {
   };
 
   const generateClientKeys = (id: string) => {
-    const priv = x25519.utils.randomPrivateKey();
-    const pub = x25519.getPublicKey(priv);
+    const keypair = generateKeypair();
     updateClient(id, {
-      privateKey: toBase64(priv),
-      publicKey: toBase64(pub),
+      privateKey: keypair.privateKey,
+      publicKey: keypair.publicKey,
     });
   };
 
@@ -210,24 +210,14 @@ export default function HomePage() {
   };
 
   const fillGeneratedKeys = () => {
-    nodes.forEach((node) => {
-      if (!node.privateKey || !node.publicKey) {
-        generateNodeKeys(node.id);
-      }
-    });
-    clients.forEach((client) => {
-      if (!client.privateKey || !client.publicKey) {
-        generateClientKeys(client.id);
-      }
-    });
+    useMeshStore.getState().ensureKeys();
   };
 
   const handleSubmit = async () => {
     setBusy(true);
     try {
-      // Fill missing keys first if auto-gen is on? 
-      // Logic usually implies explicit action or auto-fill before submit.
-      // We will send current state.
+      useMeshStore.getState().ensureKeys();
+      const state = useMeshStore.getState();
 
       const payload: GeneratePayload = {
         networkCidr,
@@ -294,18 +284,21 @@ export default function HomePage() {
 
     setBusy(true);
     try {
+      useMeshStore.getState().ensureKeys();
+      const state = useMeshStore.getState();
+
       const payload: GeneratePayload = {
-        networkCidr,
-        interfaceName,
-        endpointVersion,
-        persistentKeepalive,
-        includeIpForwarding,
-        enableBabel,
-        autoGenerateKeys,
-        topology,
-        nodes,
-        clients,
-        gatewayNodeNames, mtu,
+        networkCidr: state.networkCidr,
+        interfaceName: state.interfaceName,
+        endpointVersion: state.endpointVersion,
+        persistentKeepalive: state.persistentKeepalive,
+        includeIpForwarding: state.includeIpForwarding,
+        enableBabel: state.enableBabel,
+        autoGenerateKeys: state.autoGenerateKeys,
+        topology: state.topology,
+        nodes: state.nodes,
+        clients: state.clients,
+        gatewayNodeNames: state.gatewayNodeNames, mtu: state.mtu,
       };
 
       const res = await fetch("/api/deploy", {
@@ -338,24 +331,27 @@ export default function HomePage() {
     setBusy(true);
     setRemoteLog(`[Remote Deploy] Starting installation for ${deployNodeName}...\n`);
     try {
+      useMeshStore.getState().ensureKeys();
+      const state = useMeshStore.getState();
+
       const payload: GeneratePayload = {
-        networkCidr,
-        interfaceName,
-        endpointVersion,
-        persistentKeepalive,
-        includeIpForwarding,
-        enableBabel,
-        autoGenerateKeys,
-        topology,
-        nodes,
-        clients,
-        gatewayNodeNames, mtu,
+        networkCidr: state.networkCidr,
+        interfaceName: state.interfaceName,
+        endpointVersion: state.endpointVersion,
+        persistentKeepalive: state.persistentKeepalive,
+        includeIpForwarding: state.includeIpForwarding,
+        enableBabel: state.enableBabel,
+        autoGenerateKeys: state.autoGenerateKeys,
+        topology: state.topology,
+        nodes: state.nodes,
+        clients: state.clients,
+        gatewayNodeNames: state.gatewayNodeNames, mtu: state.mtu,
       };
 
-      const node = nodes.find(n => n.name === deployNodeName);
+      const node = state.nodes.find(n => n.name === deployNodeName);
       if (!node) throw new Error("Node not found");
 
-      const nodesWithSSH = nodes.map(n =>
+      const nodesWithSSH = state.nodes.map(n =>
         n.name === deployNodeName ? { ...n, sshUser: sshUser, sshPort: sshPort } : n
       );
       const enrichedPayload = { ...payload, nodes: nodesWithSSH };
@@ -438,64 +434,14 @@ export default function HomePage() {
     });
     setBatchNodeStatuses(newStatuses);
 
-    // --- STAGE 0: SYNC MISSING KEYS BEFORE DEPLOYING ---
-    // The generator backend `resolveMeshState` assigns keys if they are missing...
-    // BUT since we send N distinct isolated fetch POSTs concurrently here, 
-    // each fetch call randomly generates DIFFERENT keys for the identical peers!
-    // Result: The nodes can never establish handshake.
-    // Solution: Pre-generate missing keys in our global state BEFORE snapshotting the payload.
-
-    let hasMissingKeys = false;
-    nodes.forEach(n => {
-      if (!n.privateKey) {
-        generateNodeKeys(n.id);
-        hasMissingKeys = true;
-      }
-    });
-
-    clients.forEach(c => {
-      if (!c.privateKey) {
-        generateClientKeys(c.id);
-        hasMissingKeys = true;
-      }
-    });
-
-    if (hasMissingKeys) {
-      // If we regenerated keys, we need to artificially wait ~100ms so 
-      // React state flushes and we capture the updated `nodes` via a timeout 
-      // or we must pass the manually mutated arrays to the payload.
-      // Easiest is to manually map them to avoid React stale-state race conditions:
-      const updatedNodes = nodes.map(n => {
-        if (n.privateKey) return n;
-        const priv = x25519.utils.randomPrivateKey();
-        return { ...n, privateKey: toBase64(priv), publicKey: toBase64(x25519.getPublicKey(priv)) };
-      });
-      const updatedClients = clients.map(c => {
-        if (c.privateKey) return c;
-        const priv = x25519.utils.randomPrivateKey();
-        return { ...c, privateKey: toBase64(priv), publicKey: toBase64(x25519.getPublicKey(priv)) };
-      });
-
-      updatedNodes.forEach(n => {
-        if (!nodes.find(o => o.id === n.id)?.privateKey) {
-          updateNode(n.id, { privateKey: n.privateKey, publicKey: n.publicKey });
-        }
-      });
-      updatedClients.forEach(c => {
-        if (!clients.find(o => o.id === c.id)?.privateKey) {
-          updateClient(c.id, { privateKey: c.privateKey, publicKey: c.publicKey });
-        }
-      });
-
-      // Use the explicitly updated array snapshot for the deployment loop
-      setTimeout(() => __executeLoop(updatedNodes, updatedClients), 100);
-      return;
-    }
-
-    __executeLoop(nodes, clients);
+    useMeshStore.getState().ensureKeys();
+    setTimeout(() => {
+      const state = useMeshStore.getState();
+      __executeLoop(state.nodes, state.clients, state);
+    }, 50);
   };
 
-  const __executeLoop = async (currentNodes: typeof nodes, currentClients: typeof clients) => {
+  const __executeLoop = async (currentNodes: typeof nodes, currentClients: typeof clients, state: ReturnType<typeof useMeshStore.getState>) => {
     const eligibleNodes = currentNodes.filter(n => n.sshUser && n.sshPort && (n.sshHost || n.endpoint));
 
     let completed = Object.values(batchNodeStatuses).filter(s => s === "success").length;
@@ -508,18 +454,18 @@ export default function HomePage() {
 
       try {
         const payload: GeneratePayload = {
-          networkCidr,
-          interfaceName,
-          endpointVersion,
-          persistentKeepalive,
-          includeIpForwarding,
-          enableBabel,
-          autoGenerateKeys,
-          topology,
+          networkCidr: state.networkCidr,
+          interfaceName: state.interfaceName,
+          endpointVersion: state.endpointVersion,
+          persistentKeepalive: state.persistentKeepalive,
+          includeIpForwarding: state.includeIpForwarding,
+          enableBabel: state.enableBabel,
+          autoGenerateKeys: state.autoGenerateKeys,
+          topology: state.topology,
           nodes: currentNodes,
           clients: currentClients,
-          gatewayNodeNames,
-          mtu,
+          gatewayNodeNames: state.gatewayNodeNames,
+          mtu: state.mtu,
         };
 
         const res = await fetch("/api/deploy/remote", {
@@ -709,6 +655,8 @@ export default function HomePage() {
 
               <ClientTable
                 clients={clients}
+                nodes={nodes}
+                globalGatewayNodeNames={gatewayNodeNames}
                 addClient={addClient}
                 removeClient={removeClient}
                 updateClient={updateClient}

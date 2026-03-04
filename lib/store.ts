@@ -47,6 +47,7 @@ type MeshState = {
   reorderClients: (newClients: ClientInput[]) => void;
   resetAll: () => void;
   importMeshState: (data: Partial<MeshState>) => void;
+  ensureKeys: () => void;
 };
 
 const newId = () =>
@@ -69,7 +70,9 @@ const defaultClient = (index: number): ClientInput => ({
   id: newId(),
   name: `U${index + 1}`,
   publicKey: "",
-  presharedKey: ""
+  presharedKey: "",
+  gateways: [],
+  subnetRoutes: ""
 });
 
 const defaultState = () => ({
@@ -141,6 +144,36 @@ export const useMeshStore = create<MeshState>()(
           }
         }
         set(filteredData);
+      },
+      ensureKeys: () => {
+        set((state) => {
+          let updated = false;
+
+          const newNodes = state.nodes.map(node => {
+            if (!node.privateKey || !node.publicKey) {
+              updated = true;
+              const { generateKeypair } = require('./wg-utils');
+              const keypair = generateKeypair();
+              return { ...node, privateKey: keypair.privateKey, publicKey: keypair.publicKey };
+            }
+            return node;
+          });
+
+          const newClients = state.clients.map(client => {
+            if (!client.privateKey || !client.publicKey) {
+              updated = true;
+              const { generateKeypair } = require('./wg-utils');
+              const keypair = generateKeypair();
+              return { ...client, privateKey: keypair.privateKey, publicKey: keypair.publicKey };
+            }
+            return client;
+          });
+
+          if (updated) {
+            return { nodes: newNodes, clients: newClients };
+          }
+          return state;
+        });
       }
     }),
     {

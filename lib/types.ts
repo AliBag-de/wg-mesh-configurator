@@ -22,6 +22,8 @@ export type ClientInput = {
   privateKey?: string;
   presharedKey?: string;
   wgIp?: string;
+  gateways?: string[];
+  subnetRoutes?: string;
 };
 
 export type GeneratePayload = {
