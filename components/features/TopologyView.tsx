@@ -11,11 +11,10 @@ import { Network } from "lucide-react";
 interface TopologyViewProps {
     nodes: NodeInput[];
     clients: ClientInput[];
-    gatewayNodeNames: string[];
     topology: TopologyType;
 }
 
-export function TopologyView({ nodes, clients, gatewayNodeNames, topology }: TopologyViewProps) {
+export function TopologyView({ nodes, clients, topology }: TopologyViewProps) {
     const [hoveredNode, setHoveredNode] = useState<string | null>(null);
 
     const centerX = 400;
@@ -32,11 +31,11 @@ export function TopologyView({ nodes, clients, gatewayNodeNames, topology }: Top
                 ...node,
                 x: centerX + nodeRadius * Math.cos(angle),
                 y: centerY + nodeRadius * Math.sin(angle),
-                isGateway: gatewayNodeNames.includes(node.name),
+                isGateway: clients.some((c) => c.gateways?.includes(node.name)),
                 color: colorForKey(`node:${node.id}`)
             };
         });
-    }, [nodes, gatewayNodeNames]);
+    }, [nodes, clients]);
 
     const nodeLinks = useMemo(() => {
         const links: Array<{ a: number; b: number }> = [];
@@ -117,12 +116,13 @@ export function TopologyView({ nodes, clients, gatewayNodeNames, topology }: Top
                         );
                     })}
 
-                    {/* Client Connections (Client -> All Gateways) */}
+                    {/* Client Connections (Client -> Specific Gateways) */}
                     {clientPositions.map((client, i) => {
-                        if (gatewayNodeNames.length === 0 || nodePositions.length === 0) return null;
+                        const activeGateways = client.gateways && client.gateways.length > 0 ? client.gateways : [];
+                        if (activeGateways.length === 0 || nodePositions.length === 0) return null;
                         return (
                             <g key={client.id}>
-                                {gatewayNodeNames.map((gwName) => {
+                                {activeGateways.map((gwName) => {
                                     const targetNode = nodePositions.find((n) => n.name === gwName);
                                     if (!targetNode) return null;
                                     return (

@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react";
 import { generateKeypair } from "@/lib/wg-utils";
 import { useMeshStore } from "../lib/store";
 import { NetworkSettings } from "@/components/features/NetworkSettings";
-import { GatewaySelection } from "@/components/features/GatewaySelection";
 import { NodeTable } from "@/components/features/NodeTable";
 import { ClientTable } from "@/components/features/ClientTable";
 import { TopologyView } from "@/components/features/TopologyView";
@@ -63,7 +62,6 @@ export default function HomePage() {
     includeIpForwarding,
     enableBabel,
     autoGenerateKeys,
-    gatewayNodeNames,
     setNetworkCidr,
     setEndpointVersion,
     setInterfaceName,
@@ -75,7 +73,6 @@ export default function HomePage() {
     setTopology,
     setNodes,
     setClients,
-    setGatewayNodeNames,
     mtu,
     setMtu,
     resetAll,
@@ -146,10 +143,6 @@ export default function HomePage() {
 
   const removeNode = (id: string) => {
     setNodes((prev) => prev.filter((n) => n.id !== id));
-    setGatewayNodeNames((prev) => prev.filter((name) => {
-      const node = nodes.find((n) => n.id === id);
-      return node ? node.name !== name : true;
-    }));
   };
 
   const updateNode = (id: string, patch: Partial<(typeof nodes)[0]>) => {
@@ -199,15 +192,7 @@ export default function HomePage() {
     });
   };
 
-  const toggleGateway = (nodeName: string) => {
-    setGatewayNodeNames((prev) => {
-      if (prev.includes(nodeName)) {
-        return prev.filter((n) => n !== nodeName);
-      } else {
-        return [...prev, nodeName];
-      }
-    });
-  };
+
 
   const fillGeneratedKeys = () => {
     useMeshStore.getState().ensureKeys();
@@ -230,7 +215,7 @@ export default function HomePage() {
         topology,
         nodes,
         clients,
-        gatewayNodeNames, mtu,
+        mtu,
       };
 
       const res = await fetch("/api/generate", {
@@ -298,7 +283,7 @@ export default function HomePage() {
         topology: state.topology,
         nodes: state.nodes,
         clients: state.clients,
-        gatewayNodeNames: state.gatewayNodeNames, mtu: state.mtu,
+        mtu: state.mtu,
       };
 
       const res = await fetch("/api/deploy", {
@@ -345,7 +330,7 @@ export default function HomePage() {
         topology: state.topology,
         nodes: state.nodes,
         clients: state.clients,
-        gatewayNodeNames: state.gatewayNodeNames, mtu: state.mtu,
+        mtu: state.mtu,
       };
 
       const node = state.nodes.find(n => n.name === deployNodeName);
@@ -464,7 +449,6 @@ export default function HomePage() {
           topology: state.topology,
           nodes: currentNodes,
           clients: currentClients,
-          gatewayNodeNames: state.gatewayNodeNames,
           mtu: state.mtu,
         };
 
@@ -545,8 +529,6 @@ export default function HomePage() {
   const sidebarProps = {
     nodesCount: nodes.length,
     clientsCount: clients.length,
-    gatewayCount: gatewayNodeNames.length,
-    gatewayNodeNames,
     busy,
     fillGeneratedKeys,
     handleSubmit,
@@ -610,34 +592,27 @@ export default function HomePage() {
           </div>
 
           <TabsContent value="list" className="flex-1 min-h-0 overflow-y-auto pr-2 pb-20 space-y-6 custom-scrollbar focus-visible:outline-none">
-            {/* 2-Column Grid for Top Section */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 shrink-0">
-              <NetworkSettings
-                networkCidr={networkCidr}
-                setNetworkCidr={setNetworkCidr}
-                interfaceName={interfaceName}
-                setInterfaceName={setInterfaceName}
-                endpointVersion={endpointVersion}
-                setEndpointVersion={setEndpointVersion}
-                persistentKeepalive={persistentKeepalive}
-                setPersistentKeepalive={setPersistentKeepalive}
-                includeIpForwarding={includeIpForwarding}
-                setIncludeIpForwarding={setIncludeIpForwarding}
-                enableBabel={enableBabel}
-                setEnableBabel={setEnableBabel}
-                autoGenerateKeys={autoGenerateKeys}
-                setAutoGenerateKeys={setAutoGenerateKeys}
-                topology={topology}
-                setTopology={setTopology}
-                mtu={mtu}
-                setMtu={setMtu}
-              />
-              <GatewaySelection
-                nodeNames={nodes.map((n) => n.name)}
-                gatewayNodeNames={gatewayNodeNames}
-                toggleGateway={toggleGateway}
-              />
-            </div>
+            {/* Top Section */}
+            <NetworkSettings
+              networkCidr={networkCidr}
+              setNetworkCidr={setNetworkCidr}
+              interfaceName={interfaceName}
+              setInterfaceName={setInterfaceName}
+              endpointVersion={endpointVersion}
+              setEndpointVersion={setEndpointVersion}
+              persistentKeepalive={persistentKeepalive}
+              setPersistentKeepalive={setPersistentKeepalive}
+              includeIpForwarding={includeIpForwarding}
+              setIncludeIpForwarding={setIncludeIpForwarding}
+              enableBabel={enableBabel}
+              setEnableBabel={setEnableBabel}
+              autoGenerateKeys={autoGenerateKeys}
+              setAutoGenerateKeys={setAutoGenerateKeys}
+              topology={topology}
+              setTopology={setTopology}
+              mtu={mtu}
+              setMtu={setMtu}
+            />
 
             {/* Tables */}
             <div className="space-y-6 shrink-0">
@@ -656,7 +631,6 @@ export default function HomePage() {
               <ClientTable
                 clients={clients}
                 nodes={nodes}
-                globalGatewayNodeNames={gatewayNodeNames}
                 addClient={addClient}
                 removeClient={removeClient}
                 updateClient={updateClient}
@@ -668,7 +642,7 @@ export default function HomePage() {
           </TabsContent>
 
           <TabsContent value="topology" className="flex-1 min-h-0 border rounded-xl overflow-hidden bg-black/20 backdrop-blur-md shadow-xl border-border/40 focus-visible:outline-none">
-            <TopologyView nodes={nodes} clients={clients} gatewayNodeNames={gatewayNodeNames} topology={topology} />
+            <TopologyView nodes={nodes} clients={clients} topology={topology} />
           </TabsContent>
         </Tabs>
       </div>

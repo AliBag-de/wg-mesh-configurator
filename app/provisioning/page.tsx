@@ -53,7 +53,6 @@ export default function ProvisioningPage() {
         includeIpForwarding,
         enableBabel,
         autoGenerateKeys,
-        gatewayNodeNames,
         topology,
         mtu,
         setNodes,
@@ -154,7 +153,6 @@ export default function ProvisioningPage() {
                 topology,
                 nodes,
                 clients,
-                gatewayNodeNames,
                 mtu
             };
 
@@ -205,7 +203,6 @@ export default function ProvisioningPage() {
                 topology,
                 nodes,
                 clients,
-                gatewayNodeNames,
                 mtu,
             };
 
@@ -336,7 +333,7 @@ export default function ProvisioningPage() {
             try {
                 const payload: GeneratePayload = {
                     networkCidr, interfaceName, endpointVersion, persistentKeepalive,
-                    includeIpForwarding, enableBabel, autoGenerateKeys, topology, nodes: currentNodes, clients: currentClients, gatewayNodeNames, mtu
+                    includeIpForwarding, enableBabel, autoGenerateKeys, topology, nodes: currentNodes, clients: currentClients, mtu
                 };
 
                 const res = await fetch("/api/deploy/remote", {
@@ -402,8 +399,6 @@ export default function ProvisioningPage() {
     const sidebarProps = {
         nodesCount: nodes.length,
         clientsCount: clients.length,
-        gatewayCount: gatewayNodeNames.length,
-        gatewayNodeNames,
         busy,
         fillGeneratedKeys,
         handleSubmit,

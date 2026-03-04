@@ -25,8 +25,6 @@ export function ConfigManager() {
                 autoGenerateKeys: currentState.autoGenerateKeys,
                 nodes: currentState.nodes,
                 clients: currentState.clients,
-                gatewayNodeNames: currentState.gatewayNodeNames,
-                gatewayTouched: currentState.gatewayTouched,
                 mtu: currentState.mtu,
                 version: "1.0",
                 timestamp: new Date().toISOString(),

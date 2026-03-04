@@ -26,7 +26,6 @@ interface ClientTableProps {
     reorderClients: (newClients: ClientInput[]) => void;
     autoGenerateKeys: boolean;
     nodes: any[];
-    globalGatewayNodeNames: string[];
 }
 
 type SortKey = "name" | "wgIp" | "manual";
@@ -41,7 +40,6 @@ export function ClientTable({
     reorderClients,
     autoGenerateKeys,
     nodes,
-    globalGatewayNodeNames,
 }: ClientTableProps) {
     const [sortKey, setSortKey] = useState<SortKey>("manual");
     const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -73,11 +71,12 @@ export function ClientTable({
         return sortDir === "asc" ? <ArrowUp className="h-3 w-3 text-blue-400" /> : <ArrowDown className="h-3 w-3 text-blue-400" />;
     };
     const [qrClient, setQrClient] = useState<{ name: string; config: string } | null>(null);
-    const { networkCidr, endpointVersion, persistentKeepalive, gatewayNodeNames, mtu } = useMeshStore();
+    const { networkCidr, endpointVersion, persistentKeepalive, mtu } = useMeshStore();
 
     const handleShowQR = (client: ClientInput) => {
         try {
-            const gatewayNodes = nodes.filter(n => gatewayNodeNames.includes(n.name));
+            const validGateways = (client.gateways || []).filter((gw) => nodes.some((n) => n.name === gw));
+            const gatewayNodes = nodes.filter(n => validGateways.includes(n.name));
             if (gatewayNodes.length === 0) {
                 toast.error("You must select at least one gateway for QR.");
                 return;

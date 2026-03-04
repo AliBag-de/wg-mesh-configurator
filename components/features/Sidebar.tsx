@@ -26,8 +26,6 @@ import { SSHConfigManager } from "./SSHConfigManager";
 interface SidebarProps {
     nodesCount: number;
     clientsCount: number;
-    gatewayCount: number;
-    gatewayNodeNames: string[];
     busy: boolean;
     fillGeneratedKeys: () => void;
     handleSubmit: () => void;
@@ -41,8 +39,6 @@ interface SidebarProps {
 export function Sidebar({
     nodesCount,
     clientsCount,
-    gatewayCount,
-    gatewayNodeNames,
     busy,
     fillGeneratedKeys,
     handleSubmit,
@@ -57,9 +53,8 @@ export function Sidebar({
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-        gateways: true,
-        ssh: false,
-        backup: false
+        ssh: true,
+        scripts: true
     });
 
     const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
@@ -158,35 +153,6 @@ export function Sidebar({
 
             {/* Scrollable Content Area */}
             <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-2 space-y-4">
-                {/* Configuration Summary List */}
-                <div className="space-y-1">
-                    <button
-                        onClick={() => toggleSection('gateways')}
-                        className="w-full flex items-center justify-between text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-2 mb-1 px-2 hover:text-foreground transition-colors"
-                    >
-                        <div className="flex items-center gap-2">
-                            <Network className="h-3 w-3" />
-                            Gateways ({gatewayCount})
-                        </div>
-                        {expandedSections.gateways ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                    </button>
-
-                    {expandedSections.gateways && (
-                        <div className="px-2 pt-1 flex flex-wrap gap-1 animate-in fade-in slide-in-from-top-1 duration-200">
-                            {gatewayNodeNames.length > 0 ? (
-                                gatewayNodeNames.map(gw => (
-                                    <Badge key={`sb-gw-${gw}`} variant="secondary" className="text-[9px] h-4 px-1 bg-primary/10 text-primary border-primary/20">
-                                        {gw}
-                                    </Badge>
-                                ))
-                            ) : (
-                                <span className="text-[10px] text-muted-foreground italic">None selected</span>
-                            )}
-                        </div>
-                    )}
-                </div>
-
-                {/* SSH Credentials Section */}
                 <div className="space-y-1">
                     <button
                         onClick={() => toggleSection('ssh')}
@@ -229,10 +195,10 @@ export function Sidebar({
                         </div>
                     )}
                 </div>
-            </div>
+            </div >
 
             {/* Actions Footer */}
-            <div className="p-3 border-t border-border/50 bg-background/50 space-y-2 shrink-0">
+            < div className="p-3 border-t border-border/50 bg-background/50 space-y-2 shrink-0" >
                 <div className="grid grid-cols-2 gap-2">
                     <Button
                         className="font-semibold shadow-md shadow-primary/10 h-8 text-[11px] px-2"
@@ -275,46 +241,48 @@ export function Sidebar({
                     {busy ? "Downloading..." : "Download Zip"}
                 </Button>
 
-                {(handleRemoteDeploy || handleDeploy) && (
-                    <div className="grid grid-cols-1 gap-1.5">
-                        {handleRemoteDeploy && (
-                            <Button
-                                variant="default"
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/10 h-8 text-xs"
-                                size="sm"
-                                onClick={handleRemoteDeploy}
-                                disabled={busy}
-                            >
-                                <Server className="mr-2 h-3.5 w-3.5" />
-                                Deploy to Remote
-                            </Button>
-                        )}
-                        {handleBatchRemoteDeploy && (
-                            <Button
-                                variant="default"
-                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/10 h-8 text-xs"
-                                size="sm"
-                                onClick={handleBatchRemoteDeploy}
-                                disabled={busy}
-                            >
-                                <Files className="mr-2 h-3.5 w-3.5" />
-                                Deploy to All Remote
-                            </Button>
-                        )}
-                        {handleDeploy && (
-                            <Button
-                                variant="default"
-                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-500/10 h-8 text-xs"
-                                size="sm"
-                                onClick={handleDeploy}
-                                disabled={busy}
-                            >
-                                <Zap className="mr-2 h-3.5 w-3.5" />
-                                Activate on Host
-                            </Button>
-                        )}
-                    </div>
-                )}
+                {
+                    (handleRemoteDeploy || handleDeploy) && (
+                        <div className="grid grid-cols-1 gap-1.5">
+                            {handleRemoteDeploy && (
+                                <Button
+                                    variant="default"
+                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/10 h-8 text-xs"
+                                    size="sm"
+                                    onClick={handleRemoteDeploy}
+                                    disabled={busy}
+                                >
+                                    <Server className="mr-2 h-3.5 w-3.5" />
+                                    Deploy to Remote
+                                </Button>
+                            )}
+                            {handleBatchRemoteDeploy && (
+                                <Button
+                                    variant="default"
+                                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/10 h-8 text-xs"
+                                    size="sm"
+                                    onClick={handleBatchRemoteDeploy}
+                                    disabled={busy}
+                                >
+                                    <Files className="mr-2 h-3.5 w-3.5" />
+                                    Deploy to All Remote
+                                </Button>
+                            )}
+                            {handleDeploy && (
+                                <Button
+                                    variant="default"
+                                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-500/10 h-8 text-xs"
+                                    size="sm"
+                                    onClick={handleDeploy}
+                                    disabled={busy}
+                                >
+                                    <Zap className="mr-2 h-3.5 w-3.5" />
+                                    Activate on Host
+                                </Button>
+                            )}
+                        </div>
+                    )
+                }
 
                 <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/30 mt-1">
                     <Button
@@ -330,7 +298,7 @@ export function Sidebar({
                         v0.1.0 rev.A
                     </div>
                 </div>
-            </div>
+            </div >
 
             <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
                 <DialogContent className="sm:max-w-[425px] bg-amber-50 backdrop-blur-none! border-primary/60 shadow-2xl">
@@ -381,6 +349,6 @@ export function Sidebar({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </aside>
+        </aside >
     );
 }

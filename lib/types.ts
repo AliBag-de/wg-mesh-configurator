@@ -37,6 +37,5 @@ export type GeneratePayload = {
   topology: TopologyType;
   nodes: NodeInput[];
   clients: ClientInput[];
-  gatewayNodeNames: string[];
   mtu?: number;
 };

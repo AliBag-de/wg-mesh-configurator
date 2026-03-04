@@ -131,6 +131,7 @@ export function convertConfigToMesh(
     const isClientDuplicate = (pk: string) => currentClients.some(c => c.publicKey === pk) || importedPublicKeys.has(pk);
 
     // 1. Convert Interface to a Node
+    let importedNodeName = "";
     if (config.interface) {
         const ip = config.interface.address?.split("/")[0] || "";
         const existingNode = currentNodes.find(n => n.privateKey === config.interface?.privateKey);
@@ -158,7 +159,10 @@ export function convertConfigToMesh(
                 wgIp: ip
             };
             newNodes.push(newNode);
+            importedNodeName = newNode.name;
             if (derivedPubKey) importedPublicKeys.add(derivedPubKey);
+        } else {
+            importedNodeName = existingNode.name;
         }
     }
 
@@ -229,7 +233,7 @@ export function convertConfigToMesh(
                     privateKey: "",
                     wgIp: wgIp,
                     subnetRoutes: subnetRoutes,
-                    gateways: [] // For imports, we can't easily know gateway topology unless we parse a full mesh export
+                    gateways: importedNodeName ? [importedNodeName] : []
                 });
                 importedPublicKeys.add(peer.publicKey);
             }

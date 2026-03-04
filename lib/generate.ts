@@ -59,8 +59,7 @@ export function resolveMeshState(payload: GeneratePayload) {
     enableBabel,
     autoGenerateKeys,
     nodes,
-    clients,
-    gatewayNodeNames
+    clients
   } = payload;
 
   ensure(nodes.length > 0, "En az 1 node gerekli.");
@@ -80,14 +79,8 @@ export function resolveMeshState(payload: GeneratePayload) {
   const nodeMap = new Map<string, typeof nodes[number]>();
   nodes.forEach((node) => nodeMap.set(node.name, node));
 
-  // Auto-assign all nodes as gateways if none are explicitly selected
-  const effectiveGateways = gatewayNodeNames.length > 0
-    ? gatewayNodeNames
-    : nodes.map(n => n.name);
-
-  effectiveGateways.forEach((name) => {
-    ensure(nodeMap.has(name), `Gateway node bulunamadi: ${name}`);
-  });
+  // No global gateways anymore. 
+  // Each client strictly uses its own `gateways` array.
 
   const nodeIps = nodes.map((node, i) => node.wgIp || intToIp(serverStart + i));
   const clientIps = clients.map((client, i) => client.wgIp || intToIp(clientStart + i));
@@ -120,14 +113,9 @@ export function resolveMeshState(payload: GeneratePayload) {
     }
 
     // Determine effective gateways for THIS client
-    let activeGateways = effectiveGateways;
+    let activeGateways: string[] = [];
     if (res.gateways && res.gateways.length > 0) {
       activeGateways = res.gateways.filter((gw) => nodeMap.has(gw));
-    }
-
-    // Default to global if filtered result is completely empty but global wasn't
-    if (activeGateways.length === 0 && effectiveGateways.length > 0) {
-      activeGateways = effectiveGateways;
     }
 
     return { ...res, activeGateways };
@@ -139,10 +127,7 @@ export function resolveMeshState(payload: GeneratePayload) {
     nodeIps,
     clientIps,
     parsed,
-    payload: {
-      ...payload,
-      gatewayNodeNames: effectiveGateways
-    }
+    payload
   };
 }
 
@@ -156,7 +141,6 @@ export function generateNodeConfig(
     endpointVersion: "ipv4" | "ipv6";
     persistentKeepalive: number;
     includeIpForwarding: boolean;
-    gatewayNodeNames: string[];
     topology: "full_mesh" | "partial_mesh";
     mtu?: number;
     enableBabel?: boolean;
@@ -382,8 +366,7 @@ export async function generateZip(payload: GeneratePayload) {
     persistentKeepalive,
     includeIpForwarding,
     enableBabel,
-    autoGenerateKeys,
-    gatewayNodeNames
+    autoGenerateKeys
   } = p;
 
   const resolvedNodeMap = new Map<string, typeof resolvedNodes[number]>();
@@ -428,7 +411,6 @@ export async function generateZip(payload: GeneratePayload) {
         endpointVersion,
         persistentKeepalive,
         includeIpForwarding,
-        gatewayNodeNames,
         topology: p.topology || "full_mesh",
         mtu: p.mtu,
         enableBabel: enableBabel
@@ -501,7 +483,7 @@ export async function generateZip(payload: GeneratePayload) {
       name: client.name,
       address: `${clientIp}/32`,
       publicKey: client.publicKey,
-      gateways: gatewayNodeNames
+      gateways: Array.from(client.activeGateways),
     });
   });
 
@@ -530,7 +512,6 @@ export function generateNodeAssets(
     persistentKeepalive,
     includeIpForwarding,
     enableBabel,
-    gatewayNodeNames
   } = p;
 
   const nodeIndex = resolvedNodes.findIndex((n) => n.name === nodeName);
@@ -562,7 +543,6 @@ export function generateNodeAssets(
       endpointVersion,
       persistentKeepalive,
       includeIpForwarding,
-      gatewayNodeNames,
       topology: p.topology || "full_mesh",
       mtu: p.mtu,
       enableBabel: enableBabel

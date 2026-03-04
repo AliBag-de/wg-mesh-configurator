@@ -14,8 +14,6 @@ type MeshState = {
   topology: TopologyType;
   nodes: NodeInput[];
   clients: ClientInput[];
-  gatewayNodeNames: string[];
-  gatewayTouched: boolean;
   mtu: number;
   sshHosts: any[];
   sshKeys: Record<string, string>;
@@ -35,10 +33,6 @@ type MeshState = {
   setClients: (
     value: ClientInput[] | ((prev: ClientInput[]) => ClientInput[])
   ) => void;
-  setGatewayNodeNames: (
-    value: string[] | ((prev: string[]) => string[])
-  ) => void;
-  setGatewayTouched: (value: boolean) => void;
   setMtu: (value: number) => void;
   setSshHosts: (value: any[]) => void;
   setSshKeys: (value: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
@@ -86,8 +80,6 @@ const defaultState = () => ({
   topology: "full_mesh" as TopologyType,
   nodes: [],
   clients: [],
-  gatewayNodeNames: [],
-  gatewayTouched: false,
   mtu: 1420,
   sshHosts: [],
   sshKeys: {},
@@ -117,12 +109,6 @@ export const useMeshStore = create<MeshState>()(
         set((state) => ({
           clients: typeof value === "function" ? value(state.clients) : value
         })),
-      setGatewayNodeNames: (value) =>
-        set((state) => ({
-          gatewayNodeNames:
-            typeof value === "function" ? value(state.gatewayNodeNames) : value
-        })),
-      setGatewayTouched: (value) => set({ gatewayTouched: value }),
       setMtu: (value) => set({ mtu: value }),
       setSshHosts: (value) => set({ sshHosts: value }),
       setSshKeys: (value) => set((state) => ({
@@ -190,8 +176,6 @@ export const useMeshStore = create<MeshState>()(
         topology: state.topology,
         nodes: state.nodes,
         clients: state.clients,
-        gatewayNodeNames: state.gatewayNodeNames,
-        gatewayTouched: state.gatewayTouched,
         mtu: state.mtu,
         provisioningState: state.provisioningState
         // sshHosts and sshKeys are EXCLUDED here for security (no persistence)
